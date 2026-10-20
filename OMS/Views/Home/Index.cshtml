@@ -1,0 +1,209 @@
+@model OMS.Models.HomeViewModel
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    var dashboard = Model.Dashboard;
+    var selectedEventId = Context.Request.Query["eventId"].ToString();
+    var selectedEvent = Model.Events.FirstOrDefault(item => item.EventId == selectedEventId)
+        ?? Model.Events.FirstOrDefault(item => item.Status is "Ongoing" or "Published")
+        ?? Model.Events.FirstOrDefault();
+    var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "VIEWER";
+    var canCheckIn = role is "SUPERADMIN" or "ADMIN" or "REGISTRATION";
+    var canManage = role is "SUPERADMIN" or "ADMIN";
+    ViewData["Title"] = Model.Page switch
+    {
+        "scanner" => "Scanner Check-in",
+        "participants" => "Peserta & QR",
+        "data" => "Kegiatan & Laporan",
+        _ => "Dashboard"
+    };
+}
+<div class="app-shell" data-page="@Model.Page" data-can-manage="@canManage.ToString().ToLowerInvariant()">
+    <aside class="sidebar">
+        <a class="brand" href="/"><span class="brand-mark">O</span><span><strong>OMS</strong><small>OUTING MANAGEMENT</small></span></a>
+        <div class="nav-label">MENU UTAMA</div>
+        <a class="nav-item @(Model.Page == "dashboard" ? "active" : "")" href="/?page=dashboard&eventId=@selectedEvent?.EventId"><span>▦</span> Dashboard</a>
+        @if (canCheckIn)
+        {
+            <a class="nav-item @(Model.Page == "scanner" ? "active" : "")" href="/?page=scanner&eventId=@selectedEvent?.EventId"><span>▣</span> Scanner Check-in</a>
+            <a class="nav-item @(Model.Page == "participants" ? "active" : "")" href="/?page=participants&eventId=@selectedEvent?.EventId"><span>♙</span> Peserta & QR</a>
+        }
+        @if (role is "SUPERADMIN" or "ADMIN" or "VIEWER")
+        {
+            <a class="nav-item @(Model.Page == "data" ? "active" : "")" href="/?page=data&eventId=@selectedEvent?.EventId"><span>▤</span> Kegiatan & Laporan</a>
+        }
+        <div class="sidebar-footer">
+            <div class="avatar">OMS</div>
+            <div class="user-meta"><strong>@(User.FindFirst("oms:full_name")?.Value ?? User.Identity?.Name ?? "Panitia")</strong><small>@role</small></div>
+            <form asp-controller="Account" asp-action="Logout" method="post" class="ms-auto">
+                @Html.AntiForgeryToken()
+                <button class="logout-button" type="submit" title="Keluar">↗</button>
+            </form>
+        </div>
+    </aside>
+    <main class="main-area">
+        <header class="topbar">
+            <div><div class="eyebrow">OUTING MANAGEMENT SYSTEM</div><h1>@ViewData["Title"]</h1></div>
+            <div class="topbar-actions">
+                @if (Model.Events.Count > 0)
+                {
+                    <select id="event-select" class="form-select event-select" aria-label="Pilih kegiatan">
+                        @foreach (var item in Model.Events)
+                        {
+                            <option value="@item.EventId" selected="@(item.EventId == selectedEvent?.EventId ? "selected" : null)">@item.EventName (@item.Status)</option>
+                        }
+                    </select>
+                }
+                @if (canManage && Model.Page == "data")
+                {
+                    <a class="btn btn-primary" href="#new-event-form">+ Kegiatan</a>
+                }
+                <span class="user-email">@User.FindFirst("email")?.Value</span>
+            </div>
+        </header>
+        <section class="page-content">
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">@Model.ErrorMessage</div>
+            }
+            else if (Model.Events.Count == 0 && Model.Page != "data")
+            {
+                <div class="panel empty-state"><h2>Belum ada kegiatan</h2><p>Buat kegiatan untuk mulai menggunakan dashboard.</p>
+                    @if (canManage)
+                    {
+                        <a class="btn btn-primary mt-2" href="/?page=data">Buat kegiatan pertama</a>
+                    }
+                </div>
+            }
+            else if (Model.Page == "dashboard" && dashboard is not null)
+            {
+                <div class="welcome-panel">
+                    <div><span class="welcome-tag">KEGIATAN TERPILIH</span><h2 id="event-name">@dashboard.Event.EventName</h2><p>@dashboard.Event.StartDate · @dashboard.Event.Location · @dashboard.Event.Status</p></div>
+                    <div class="welcome-icon">✦</div>
+                </div>
+                <div class="stats-grid">
+                    <article class="stat-card"><span>Total peserta</span><strong id="stat-total">@dashboard.Total</strong><small>Peserta aktif terdaftar</small></article>
+                    <article class="stat-card"><span>Hadir</span><strong id="stat-attended">@dashboard.Attended</strong><small>Sudah check-in</small></article>
+                    <article class="stat-card"><span>Belum hadir</span><strong id="stat-absent">@dashboard.Absent</strong><small>Belum tercatat check-in</small></article>
+                    <article class="stat-card"><span>Kehadiran</span><strong id="stat-percent">@dashboard.AttendancePercent%</strong><div class="progress mt-2"><div id="attendance-progress" class="progress-bar" style="width:@dashboard.AttendancePercent%"></div></div></article>
+                </div>
+                <div class="content-grid">
+                    <article class="panel"><div class="panel-heading"><div><h3>Kehadiran per departemen</h3><p>Ringkasan check-in kegiatan</p></div></div>
+                        <div class="table-responsive"><table class="table"><thead><tr><th>Departemen</th><th>Peserta</th><th>Hadir</th><th>Progres</th></tr></thead>
+                            <tbody id="department-body">
+                                @foreach (var department in dashboard.Departments)
+                                {
+                                    var percent = department.Total == 0 ? 0 : Math.Round(department.Attended * 100d / department.Total);
+                                    <tr><td>@department.Department</td><td>@department.Total</td><td>@department.Attended</td><td><div class="progress"><div class="progress-bar" style="width:@percent%"></div></div></td></tr>
+                                }
+                            </tbody>
+                        </table></div>
+                    </article>
+                    <article class="panel"><div class="panel-heading"><div><h3>Check-in terbaru</h3><p>Transaksi check-in terakhir</p></div></div>
+                        <div id="recent-list" class="activity-list">
+                            @foreach (var item in dashboard.Recent)
+                            {
+                                <div class="activity-item"><span class="activity-dot"></span><div><strong>@item.FullName</strong><small>@item.EmployeeNumber · @item.Department · @item.AttendanceTime</small></div></div>
+                            }
+                        </div>
+                    </article>
+                </div>
+                <article class="panel mt-4"><div class="panel-heading"><div><h3>Belum check-in</h3><p>Menampilkan maksimal 30 peserta</p></div><a class="btn btn-sm btn-outline-primary" href="/?page=participants&eventId=@selectedEvent?.EventId">Cari peserta</a></div>
+                    <div id="absent-list" class="absent-list">
+                        @foreach (var item in dashboard.AbsentParticipants)
+                        {
+                            <span class="absent-chip">@item.FullName · @item.EmployeeNumber</span>
+                        }
+                    </div>
+                </article>
+            }
+            else if (Model.Page == "scanner" && canCheckIn)
+            {
+                <div class="workspace-intro"><div><h2>Check-in peserta</h2><p>Pilih sesi, lalu scan QR atau cari peserta berdasarkan NIK.</p></div></div>
+                <article class="panel session-toolbar"><label class="form-label mb-0" for="session-select">Sesi check-in</label><select id="session-select" class="form-select"><option value="">Check-in umum kegiatan</option></select></article>
+                <div class="scanner-workspace">
+                    <article class="panel">
+                        <div class="panel-heading"><div><h3>Scan QR</h3><p>Kamera aktif hanya saat tombol Mulai kamera ditekan.</p></div></div>
+                        <div id="qr-reader"></div>
+                        <div class="button-row mt-3"><button id="start-scan" class="btn btn-primary" onclick="startScanner()">Mulai kamera</button><button id="stop-scan" class="btn btn-outline-secondary" onclick="stopScanner()" disabled>Hentikan</button><button class="btn btn-outline-secondary" onclick="document.getElementById('qr-image').click()">Pilih foto QR</button></div>
+                        <div id="scan-message" class="camera-help mt-3">Kamera memerlukan HTTPS (atau localhost), izin dari browser, dan perangkat kamera yang tersedia.</div>
+                        <input id="qr-image" type="file" accept="image/*" capture="environment" class="d-none" onchange="scanImage(this.files[0]);this.value=''">
+                    </article>
+                    <article class="panel manual-checkin-panel">
+                        <div class="panel-heading"><div><h3>Check-in manual</h3><p>Masukkan NIK peserta, pilih hasil yang cocok, lalu konfirmasi.</p></div></div>
+                        <label class="form-label" for="manual-search">NIK peserta</label>
+                        <div class="input-group"><input id="manual-search" class="form-control" autocomplete="off" placeholder="Ketik NIK atau nama"><button class="btn btn-primary" id="manual-search-button" type="button">Cari</button></div>
+                        <div id="manual-results" class="manual-results mt-3" aria-live="polite"></div>
+                        <div id="scan-result-area" class="mt-3" aria-live="polite"></div>
+                    </article>
+                </div>
+            }
+            else if (Model.Page == "participants" && canCheckIn)
+            {
+                <div class="workspace-intro"><div><h2>Peserta & QR</h2><p>Cari dan kelola peserta untuk kegiatan terpilih.</p></div>
+                    @if (canManage)
+                    {
+                        <div class="button-row"><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim undangan QR</button></div>
+                    }
+                </div>
+                @if (canManage)
+                {
+                    <div id="invite-progress" class="alert alert-info d-none" role="status"></div>
+                }
+                <article class="panel">
+                    <div class="panel-heading"><div><h3>Daftar peserta</h3><p id="participant-page">Memuat data peserta...</p></div></div>
+                    <input id="participant-search" class="form-control" placeholder="Cari berdasarkan NIK, nama, atau departemen" aria-label="Cari peserta">
+                    <div class="table-responsive mt-3"><table class="table table-hover align-middle"><thead><tr><th>NIK</th><th>Nama</th><th>Departemen</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="participant-table"></tbody></table></div>
+                    <div class="d-flex justify-content-between align-items-center mt-3"><button id="participant-prev" class="btn btn-sm btn-outline-secondary">Sebelumnya</button><small id="participant-page-control" class="text-secondary"></small><button id="participant-next" class="btn btn-sm btn-outline-secondary">Berikutnya</button></div>
+                    <div id="qr-output" class="qr-output d-none"><div id="qr-code"></div><p id="qr-caption" class="small mt-2 mb-2"></p><button id="download-qr" class="btn btn-sm btn-primary">Unduh QR PNG</button></div>
+                </article>
+            }
+            else if (Model.Page == "data" && (canManage || role == "VIEWER"))
+            {
+                @if (canManage)
+                {
+                    <article class="panel mb-4" id="new-event-form">
+                        <div class="panel-heading"><div><h3>Buat kegiatan</h3><p>Data disimpan pada sheet Events.</p></div></div>
+                        <div class="row g-3">
+                            <div class="col-md-4"><label class="form-label" for="new-event-code">Kode</label><input id="new-event-code" class="form-control" maxlength="40"></div>
+                            <div class="col-md-8"><label class="form-label" for="new-event-name">Nama kegiatan</label><input id="new-event-name" class="form-control" maxlength="120"></div>
+                            <div class="col-md-4"><label class="form-label" for="new-event-status">Status</label><select id="new-event-status" class="form-select"><option>Draft</option><option>Published</option><option>Ongoing</option></select></div>
+                            <div class="col-md-4"><label class="form-label" for="new-event-start">Tanggal mulai</label><input id="new-event-start" class="form-control" type="date"></div>
+                            <div class="col-md-4"><label class="form-label" for="new-event-end">Tanggal selesai</label><input id="new-event-end" class="form-control" type="date"></div>
+                            <div class="col-12"><label class="form-label" for="new-event-location">Lokasi</label><input id="new-event-location" class="form-control" maxlength="200"></div>
+                            <div class="col-12"><label class="form-label" for="new-event-description">Deskripsi</label><textarea id="new-event-description" class="form-control" rows="2" maxlength="1000"></textarea></div>
+                        </div>
+                        <button class="btn btn-primary mt-3" onclick="createEvent()">Simpan kegiatan</button>
+                    </article>
+                }
+                <article class="panel mb-4">
+                    <div class="panel-heading"><div><h3>Daftar kegiatan</h3><p>Pilih kegiatan aktif dari pemilih di bagian atas halaman.</p></div></div>
+                    <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Kode</th><th>Nama kegiatan</th><th>Tanggal</th><th>Lokasi</th><th>Status</th></tr></thead><tbody>
+                    @foreach (var item in Model.Events)
+                    {
+                        <tr><td>@item.EventCode</td><td>@item.EventName</td><td>@item.StartDate</td><td>@item.Location</td><td><span class="badge text-bg-light">@item.Status</span></td></tr>
+                    }
+                    </tbody></table></div>
+                </article>
+                @if (selectedEvent is not null)
+                {
+                    <article class="panel">
+                        <div class="panel-heading"><div><h3>Laporan kehadiran</h3><p id="report-page-label">Tabel peserta dan status check-in kegiatan terpilih.</p></div><a class="btn btn-outline-primary" href="/api/oms/reports/attendance.csv?eventId=@selectedEvent.EventId">Unduh CSV</a></div>
+                        <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>NIK</th><th>Nama</th><th>Departemen</th><th>Status</th><th>Waktu check-in</th><th>Metode</th></tr></thead><tbody id="attendance-report-body"><tr><td colspan="6" class="text-secondary">Memuat laporan...</td></tr></tbody></table></div>
+                        <div class="d-flex justify-content-between align-items-center mt-3"><button id="report-prev" class="btn btn-sm btn-outline-secondary">Sebelumnya</button><small id="report-page-control" class="text-secondary"></small><button id="report-next" class="btn btn-sm btn-outline-secondary">Berikutnya</button></div>
+                    </article>
+                }
+                else
+                {
+                    <article class="panel"><h3>Laporan kehadiran</h3><p class="text-secondary mb-0">Buat dan pilih kegiatan untuk menampilkan tabel laporan serta unduhan CSV.</p></article>
+                }
+            }
+        </section>
+        <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+    </main>
+</div>
+<meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken">
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="~/js/oms.js" asp-append-version="true"></script>
+}

@@ -68,6 +68,17 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
             request.EventId, CurrentEmail(), request.Offset, request.BatchSize, cancellationToken));
     }
 
+    [HttpPost("participants/send-invitation")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendInvitation(
+        [FromBody] IndividualInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        return Ok(await oms.SendIndividualInvitationAsync(
+            request.EventId, request.ParticipantId, CurrentEmail(), cancellationToken));
+    }
+
     [HttpPost("participants/issue-qr")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> IssueQr(
@@ -136,6 +147,18 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
         await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN", "REGISTRATION"], cancellationToken);
         var result = await oms.CheckInManualAsync(
             request.EventId, request.SessionId, request.ParticipantId, CurrentEmail(), cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("scanner/check-out")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CheckOut(
+        [FromBody] CheckOutRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN", "REGISTRATION"], cancellationToken);
+        var result = await oms.CheckOutAsync(
+            request.EventId, request.SessionId, request.ParticipantId, request.Method, CurrentEmail(), cancellationToken);
         return Ok(result);
     }
 

@@ -42,7 +42,9 @@ public sealed record AttendanceReportRow(
     string Department,
     string Status,
     string AttendanceTime,
-    string Method);
+    string Method,
+    string CheckOutTime,
+    string CheckOutMethod);
 
 public sealed record AttendanceReportPage(
     int Total,
@@ -59,6 +61,8 @@ public sealed record InvitationBatchResult(
     IReadOnlyList<string> Errors);
 
 public sealed record InvitationBatchRequest(string EventId, int Offset = 0, int BatchSize = 10);
+
+public sealed record IndividualInvitationRequest(string EventId, string ParticipantId);
 
 public sealed record ImportSummary(int Imported, int Existing, int Invalid, int DuplicateSource);
 
@@ -102,8 +106,15 @@ public sealed record ScanRequest(string EventId, string? SessionId, string Token
 
 public sealed record ManualCheckInRequest(string EventId, string? SessionId, string ParticipantId);
 
+public sealed record CheckOutRequest(
+    string EventId,
+    string? SessionId,
+    string ParticipantId,
+    string Method = "QR");
+
 public sealed record ScanResponse(
     string Status,
     string Message,
     OmsParticipant? Participant = null,
-    string? AttendanceTime = null);
+    string? AttendanceTime = null,
+    string? CheckOutTime = null);

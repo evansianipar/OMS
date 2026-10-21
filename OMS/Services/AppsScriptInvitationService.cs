@@ -21,6 +21,9 @@ public sealed class AppsScriptInvitationService(
         string eventId,
         OmsParticipant participant,
         string token,
+        string camp,
+        string transport,
+        string vehicle,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_options.AppsScriptId))
@@ -42,7 +45,10 @@ public sealed class AppsScriptInvitationService(
         request.Content = JsonContent.Create(new
         {
             function = "sendInvitationMail",
-            parameters = new object[] { eventId, participant.ParticipantId, token, qrDataUrl }
+            parameters = new object[]
+            {
+                eventId, participant.ParticipantId, token, qrDataUrl, camp, transport, vehicle
+            }
         });
 
         using var response = await httpClientFactory.CreateClient().SendAsync(request, cancellationToken);

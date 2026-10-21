@@ -1,5 +1,7 @@
+using Google.Apis.Sheets.v4.Data;
 using Microsoft.Extensions.Options;
 using OMS.Models;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -12,6 +14,11 @@ public sealed class OmsService(
     ILogger<OmsService> logger)
 {
     private static readonly SemaphoreSlim AttendanceLock = new(1, 1);
+    private static readonly string[] AttendanceBaseHeaders =
+        ["AttendanceId", "EventId", "ParticipantId", "SessionId", "AttendanceTime", "CheckInMethod", "CheckedBy"];
+    private static readonly string[] AttendanceCheckoutHeaders =
+        ["CheckOutTime", "CheckOutMethod", "CheckedOutBy"];
+    private sealed record EmployeeInvitationInfo(string Camp, string Transport, string Vehicle);
 
     public async Task<OmsUser> RequireRoleAsync(
         string email,
@@ -279,7 +286,7 @@ public sealed class OmsService(
             CsvRow(["Kegiatan", @event.EventName]),
             CsvRow(["Waktu ekspor UTC", DateTimeOffset.UtcNow.ToString("O")]),
             string.Empty,
-            CsvRow(["Nomor Pegawai", "Nama", "Departemen", "Status Kehadiran", "Waktu Check-in", "Metode"])
+            CsvRow(["Nomor Pegawai", "Nama", "Departemen", "Status Kehadiran", "Waktu Check-in", "Waktu Check-out", "Metode Check-in", "Metode Check-out"])
         };
         foreach (var participant in participants)
         {
@@ -288,7 +295,9 @@ public sealed class OmsService(
                 participant.EmployeeNumber, participant.FullName, participant.Department,
                 row is null ? "Belum hadir" : "Hadir",
                 row is null ? string.Empty : Get(row, "AttendanceTime"),
-                row is null ? string.Empty : Get(row, "CheckInMethod")
+                row is null ? string.Empty : Get(row, "CheckOutTime"),
+                row is null ? string.Empty : Get(row, "CheckInMethod"),
+                row is null ? string.Empty : Get(row, "CheckOutMethod")
             ]));
         }
         return "\uFEFF" + string.Join("\r\n", lines);
@@ -321,7 +330,9 @@ public sealed class OmsService(
                     participant.Department,
                     row is null ? "Belum hadir" : "Hadir",
                     row is null ? string.Empty : Get(row, "AttendanceTime"),
-                    row is null ? string.Empty : Get(row, "CheckInMethod"));
+                    row is null ? string.Empty : Get(row, "CheckInMethod"),
+                    row is null ? string.Empty : Get(row, "CheckOutTime"),
+                    row is null ? string.Empty : Get(row, "CheckOutMethod"));
             }).ToList();
 
         page = Math.Max(1, page);
@@ -337,34 +348,31 @@ public sealed class OmsService(
         int batchSize,
         CancellationToken cancellationToken)
     {
-        var outing = await GetEventAsync(eventId, cancellationToken);
+        await GetEventAsync(eventId, cancellationToken);
         var participants = (await GetParticipantsAsync(eventId, cancellationToken))
             .Where(item => item.IsActive)
             .ToList();
         var candidates = new List<OmsParticipant>();
         foreach (var participant in participants)
         {
-            if (System.Net.Mail.MailAddress.TryCreate(participant.Email, out _))
+            if (System.Net.Mail.MailAddress.TryCreate(participant.Email.Trim(), out _))
                 candidates.Add(participant);
         }
 
         offset = Math.Clamp(offset, 0, candidates.Count);
         batchSize = Math.Clamp(batchSize, 1, 20);
         var batch = candidates.Skip(offset).Take(batchSize).ToList();
+        var invitationInfoByEmployee = batch.Count == 0
+            ? new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase)
+            : await GetEmployeeInvitationInfoAsync(cancellationToken);
         var sent = 0;
         var errors = new List<string>();
         foreach (var participant in batch)
         {
             try
             {
-                var qr = await IssueQrAsync(eventId, participant.ParticipantId, actorEmail, cancellationToken);
-                await invitations.SendAsync(
-                    eventId,
-                    participant with { Email = participant.Email.Trim() },
-                    qr.Token,
-                    cancellationToken);
-                await AuditAsync(eventId, actorEmail, "SEND_INVITATION", "Participant", participant.ParticipantId,
-                    "Undangan QR dikirim.", cancellationToken);
+                await SendInvitationToParticipantAsync(
+                    eventId, participant, actorEmail, invitationInfoByEmployee, cancellationToken);
                 sent++;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -388,6 +396,88 @@ public sealed class OmsService(
             errors.Take(10).ToList());
     }
 
+    public async Task<InvitationBatchResult> SendIndividualInvitationAsync(
+        string eventId,
+        string participantId,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        var participant = (await GetParticipantsAsync(eventId, cancellationToken))
+            .FirstOrDefault(item => item.ParticipantId == participantId);
+        if (participant is null)
+            throw new InvalidOperationException("Peserta tidak ditemukan pada kegiatan ini");
+        if (!participant.IsActive)
+            throw new InvalidOperationException("Peserta tidak aktif");
+        if (!System.Net.Mail.MailAddress.TryCreate(participant.Email.Trim(), out _))
+            throw new InvalidOperationException("Alamat email peserta kosong atau tidak valid");
+
+        var invitationInfoByEmployee = await GetEmployeeInvitationInfoAsync(cancellationToken);
+        await SendInvitationToParticipantAsync(
+            eventId, participant, actorEmail, invitationInfoByEmployee, cancellationToken);
+        return new InvitationBatchResult(1, 0, 0, 1, 1, []);
+    }
+
+    private async Task SendInvitationToParticipantAsync(
+        string eventId,
+        OmsParticipant participant,
+        string actorEmail,
+        IReadOnlyDictionary<string, EmployeeInvitationInfo> invitationInfoByEmployee,
+        CancellationToken cancellationToken)
+    {
+        if (!invitationInfoByEmployee.TryGetValue(participant.EmployeeNumber.Trim(), out var invitationInfo))
+            throw new InvalidOperationException(
+                $"Data NIK {participant.EmployeeNumber} tidak ditemukan pada sheet 'List All EMP LENGKAP'");
+
+        var qr = await IssueQrAsync(eventId, participant.ParticipantId, actorEmail, cancellationToken);
+        await invitations.SendAsync(
+            eventId,
+            participant with { Email = participant.Email.Trim() },
+            qr.Token,
+            invitationInfo.Camp,
+            invitationInfo.Transport,
+            invitationInfo.Vehicle,
+            cancellationToken);
+        await AuditAsync(eventId, actorEmail, "SEND_INVITATION", "Participant", participant.ParticipantId,
+            "Undangan QR dikirim.", cancellationToken);
+    }
+
+    private async Task<Dictionary<string, EmployeeInvitationInfo>> GetEmployeeInvitationInfoAsync(
+        CancellationToken cancellationToken)
+    {
+        var master = await sheets.ReadAsync("'List All EMP LENGKAP'!A1:Z", cancellationToken);
+        if (master.Count < 2)
+            throw new InvalidOperationException("Sheet master karyawan tidak ditemukan atau kosong.");
+
+        var headers = master[0].Select(value => NormalizeHeader(Convert.ToString(value))).ToList();
+        var employeeIndex = FindHeader(headers, "NIK", "EMPLOYEENUMBER", "NOMORPEGAWAI");
+        var campIndex = FindHeader(headers, "CAMP");
+        var transportIndex = FindHeader(headers, "TRANSPORT");
+        var vehicleIndex = FindHeader(headers, "MOBIL", "NOMOBIL");
+        if (employeeIndex < 0 || campIndex < 0 || transportIndex < 0 || vehicleIndex < 0)
+            throw new InvalidOperationException(
+                "Kolom NIK, CAMP, TRANSPORT, dan MOBIL harus tersedia pada sheet 'List All EMP LENGKAP' untuk mengirim undangan");
+
+        var invitationInfoByEmployee = new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in master.Skip(1))
+        {
+            var employeeNumber = Cell(row, employeeIndex).Trim();
+            if (string.IsNullOrWhiteSpace(employeeNumber)) continue;
+
+            var info = new EmployeeInvitationInfo(
+                Cell(row, campIndex).Trim(),
+                Cell(row, transportIndex).Trim(),
+                Cell(row, vehicleIndex).Trim());
+            if (!invitationInfoByEmployee.TryGetValue(employeeNumber, out var existingInfo) ||
+                string.IsNullOrWhiteSpace(existingInfo.Camp) ||
+                string.IsNullOrWhiteSpace(existingInfo.Transport) ||
+                string.IsNullOrWhiteSpace(existingInfo.Vehicle))
+                invitationInfoByEmployee[employeeNumber] = info;
+        }
+
+        return invitationInfoByEmployee;
+    }
+
     public async Task<IReadOnlyList<OmsSession>> ListSessionsAsync(string eventId, CancellationToken cancellationToken)
     {
         await GetEventAsync(eventId, cancellationToken);
@@ -406,22 +496,22 @@ public sealed class OmsService(
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 200)
-            return new ScanResponse("INVALID_QR", "QR TIDAK VALID.");
+            return new ScanResponse("INVALID_QR", "QR TIDAK VALID");
 
         await AttendanceLock.WaitAsync(cancellationToken);
         try
         {
             var @event = await GetEventAsync(eventId, cancellationToken);
             if (new[] { "Draft", "Cancelled", "Completed" }.Contains(@event.Status, StringComparer.OrdinalIgnoreCase))
-                return new ScanResponse("EVENT_INACTIVE", "CHECK-IN TIDAK TERSEDIA UNTUK KEGIATAN INI.");
+                return new ScanResponse("EVENT_INACTIVE", "CHECK-IN TIDAK TERSEDIA UNTUK KEGIATAN INI");
             var sessionError = await ValidateSessionAsync(eventId, sessionId, cancellationToken);
             if (sessionError is not null) return new ScanResponse("SESSION_INACTIVE", sessionError);
 
             var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
             var participants = await GetParticipantsAsync(eventId, cancellationToken);
             var participant = participants.FirstOrDefault(item => item.TokenHash.Equals(hash, StringComparison.Ordinal));
-            if (participant is null) return new ScanResponse("INVALID_QR", "QR TIDAK VALID.");
-            if (!participant.IsActive) return new ScanResponse("PARTICIPANT_INACTIVE", "PESERTA TIDAK AKTIF.");
+            if (participant is null) return new ScanResponse("INVALID_QR", "QR TIDAK VALID");
+            if (!participant.IsActive) return new ScanResponse("PARTICIPANT_INACTIVE", "PESERTA TIDAK AKTIF");
             return await SaveAttendanceAsync(eventId, sessionId, participant, "QR", checkedBy, cancellationToken);
         }
         finally
@@ -442,15 +532,116 @@ public sealed class OmsService(
         {
             var @event = await GetEventAsync(eventId, cancellationToken);
             if (new[] { "Draft", "Cancelled", "Completed" }.Contains(@event.Status, StringComparer.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Check-in tidak tersedia untuk status kegiatan " + @event.Status + ".");
+                throw new InvalidOperationException("Check-in tidak tersedia untuk status kegiatan " + @event.Status);
             var sessionError = await ValidateSessionAsync(eventId, sessionId, cancellationToken);
             if (sessionError is not null) throw new InvalidOperationException(sessionError);
 
             var participant = (await GetParticipantsAsync(eventId, cancellationToken))
                 .FirstOrDefault(item => item.ParticipantId == participantId);
-            if (participant is null) throw new InvalidOperationException("Peserta tidak terdaftar pada kegiatan ini.");
-            if (!participant.IsActive) throw new InvalidOperationException("Peserta tidak aktif.");
+            if (participant is null) throw new InvalidOperationException("Peserta tidak terdaftar pada kegiatan ini");
+            if (!participant.IsActive) throw new InvalidOperationException("Peserta tidak aktif");
             return await SaveAttendanceAsync(eventId, sessionId, participant, "MANUAL", checkedBy, cancellationToken);
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+    }
+
+    public async Task<ScanResponse> CheckOutAsync(
+        string eventId,
+        string? sessionId,
+        string participantId,
+        string method,
+        string checkedBy,
+        CancellationToken cancellationToken)
+    {
+        if (method is not ("QR" or "MANUAL"))
+            throw new InvalidOperationException("Metode check-out tidak valid");
+
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            var @event = await GetEventAsync(eventId, cancellationToken);
+            if (new[] { "Draft", "Cancelled", "Completed" }.Contains(@event.Status, StringComparer.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Check-out tidak tersedia untuk status kegiatan " + @event.Status);
+            var sessionError = await ValidateSessionAsync(eventId, sessionId, cancellationToken);
+            if (sessionError is not null) throw new InvalidOperationException(sessionError);
+
+            var participant = (await GetParticipantsAsync(eventId, cancellationToken))
+                .FirstOrDefault(item => item.ParticipantId == participantId);
+            if (participant is null) throw new InvalidOperationException("Peserta tidak terdaftar pada kegiatan ini");
+            if (!participant.IsActive) throw new InvalidOperationException("Peserta tidak aktif");
+
+            var rows = await ReadAttendanceRowsWithCheckoutHeadersAsync(cancellationToken);
+            var headers = GetAttendanceHeaders(rows);
+            var participantColumn = GetRequiredHeaderIndex(headers, "ParticipantId");
+            var eventColumn = GetRequiredHeaderIndex(headers, "EventId");
+            var sessionColumn = GetRequiredHeaderIndex(headers, "SessionId");
+            var checkInColumn = GetRequiredHeaderIndex(headers, "AttendanceTime");
+            var checkOutColumn = GetRequiredHeaderIndex(headers, "CheckOutTime");
+            var checkOutMethodColumn = GetRequiredHeaderIndex(headers, "CheckOutMethod");
+            var checkedOutByColumn = GetRequiredHeaderIndex(headers, "CheckedOutBy");
+            var matchingRows = FindAttendanceRows(
+                rows, eventColumn, participantColumn, sessionColumn,
+                eventId, participantId, sessionId ?? string.Empty);
+
+            if (matchingRows.Count == 0)
+                return new ScanResponse("CHECKIN_REQUIRED", "CHECK-IN BELUM TERCATAT", participant);
+            if (matchingRows.Count > 1)
+                throw new InvalidOperationException(
+                    "Terdapat lebih dari satu baris check-in untuk peserta dan sesi ini. Periksa data Attendance sebelum check-out");
+
+            var rowIndex = matchingRows[0];
+            var row = rows[rowIndex];
+            var checkInTime = Cell(row, checkInColumn).Trim();
+            var existingCheckOut = Cell(row, checkOutColumn).Trim();
+            if (string.IsNullOrWhiteSpace(checkInTime))
+                return new ScanResponse("CHECKIN_REQUIRED", "CHECK-IN BELUM TERCATAT", participant);
+            if (!string.IsNullOrWhiteSpace(existingCheckOut))
+                return new ScanResponse(
+                    "ALREADY_CHECKED_OUT", "PESERTA SUDAH CHECK-OUT", participant, checkInTime, existingCheckOut);
+
+            var now = DateTimeOffset.UtcNow;
+            var checkOutTime = now.ToOffset(TimeSpan.FromHours(7))
+                .ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+            var auditTimestamp = now.ToString("O", CultureInfo.InvariantCulture);
+            var sheetRow = rowIndex + 1;
+            await sheets.UpdateManyAsync(
+            [
+                new ValueRange
+                {
+                    Range = AttendanceCellRange(checkOutColumn, sheetRow),
+                    Values = new List<IList<object>> { new List<object> { checkOutTime } }
+                },
+                new ValueRange
+                {
+                    Range = AttendanceCellRange(checkOutMethodColumn, sheetRow),
+                    Values = new List<IList<object>> { new List<object> { method } }
+                },
+                new ValueRange
+                {
+                    Range = AttendanceCellRange(checkedOutByColumn, sheetRow),
+                    Values = new List<IList<object>> { new List<object> { checkedBy } }
+                }
+            ], cancellationToken);
+
+            try
+            {
+                await sheets.AppendAsync("'AuditLog'!A:H",
+                [
+                    Guid.NewGuid().ToString(), eventId, checkedBy, "CHECK_OUT", "Attendance",
+                    Cell(row, GetRequiredHeaderIndex(headers, "AttendanceId")), auditTimestamp,
+                    "Check-out dengan metode " + method + "."
+                ], cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Check-out peserta {ParticipantId} tersimpan tetapi audit log gagal ditulis.", participantId);
+            }
+
+            return new ScanResponse(
+                "CHECK_OUT_SUCCESS", "CHECK-OUT BERHASIL", participant, checkInTime, checkOutTime);
         }
         finally
         {
@@ -466,20 +657,39 @@ public sealed class OmsService(
         string checkedBy,
         CancellationToken cancellationToken)
     {
-        var rows = ToRecords(await sheets.ReadAsync("'Attendance'!A1:Z", cancellationToken));
-        var existing = rows.FirstOrDefault(row =>
-            Get(row, "EventId") == eventId &&
-            Get(row, "ParticipantId") == participant.ParticipantId &&
-            Get(row, "SessionId") == (sessionId ?? string.Empty));
-        if (existing is not null)
-            return new ScanResponse("DUPLICATE", "SUDAH CHECK-IN.", participant, Get(existing, "AttendanceTime"));
+        var attendanceRows = await ReadAttendanceRowsWithCheckoutHeadersAsync(cancellationToken);
+        var headers = GetAttendanceHeaders(attendanceRows);
+        var eventColumn = GetRequiredHeaderIndex(headers, "EventId");
+        var participantColumn = GetRequiredHeaderIndex(headers, "ParticipantId");
+        var sessionColumn = GetRequiredHeaderIndex(headers, "SessionId");
+        var checkInColumn = GetRequiredHeaderIndex(headers, "AttendanceTime");
+        var checkOutColumn = GetRequiredHeaderIndex(headers, "CheckOutTime");
+        var existingRows = FindAttendanceRows(
+            attendanceRows, eventColumn, participantColumn, sessionColumn,
+            eventId, participant.ParticipantId, sessionId ?? string.Empty);
+        if (existingRows.Count > 0)
+        {
+            var existing = attendanceRows[existingRows[0]];
+            var checkOutTime = Cell(existing, checkOutColumn).Trim();
+            return new ScanResponse(
+                "DUPLICATE",
+                string.IsNullOrWhiteSpace(checkOutTime)
+                    ? "SUDAH CHECK-IN"
+                    : "PESERTA SUDAH CHECK-IN DAN CHECK-OUT",
+                participant,
+                Cell(existing, checkInColumn),
+                checkOutTime);
+        }
 
-        var timestamp = DateTimeOffset.UtcNow.ToString("O");
+        var now = DateTimeOffset.UtcNow;
+        var timestamp = now.ToOffset(TimeSpan.FromHours(7))
+            .ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+        var auditTimestamp = now.ToString("O", CultureInfo.InvariantCulture);
         var id = Guid.NewGuid().ToString();
         await sheets.AppendAsync("'Attendance'!A:I",
         [
             id, eventId, participant.ParticipantId, sessionId ?? string.Empty,
-            timestamp, method, checkedBy, string.Empty, timestamp
+            timestamp, method, checkedBy, string.Empty, auditTimestamp
         ], cancellationToken);
 
         try
@@ -487,7 +697,7 @@ public sealed class OmsService(
             await sheets.AppendAsync("'AuditLog'!A:H",
             [
                 Guid.NewGuid().ToString(), eventId, checkedBy, "CHECK_IN", "Attendance",
-                id, timestamp, "Check-in dengan metode " + method + "."
+                id, auditTimestamp, "Check-in dengan metode " + method + "."
             ], cancellationToken);
         }
         catch (Exception exception)
@@ -495,7 +705,100 @@ public sealed class OmsService(
             logger.LogError(exception, "Check-in {AttendanceId} tersimpan tetapi audit log gagal ditulis.", id);
         }
 
-        return new ScanResponse("SUCCESS", "BERHASIL CHECK-IN.", participant, timestamp);
+        return new ScanResponse("SUCCESS", "BERHASIL CHECK-IN", participant, timestamp);
+    }
+
+    private async Task<IList<IList<object>>> ReadAttendanceRowsWithCheckoutHeadersAsync(
+        CancellationToken cancellationToken)
+    {
+        var rows = await sheets.ReadAsync("'Attendance'!A1:AZ", cancellationToken);
+        if (rows.Count == 0)
+            throw new InvalidOperationException("Header sheet Attendance belum tersedia");
+
+        var headers = GetAttendanceHeaders(rows);
+        foreach (var requiredHeader in AttendanceBaseHeaders)
+        {
+            if (headers.FindIndex(header => NormalizeHeader(header) == NormalizeHeader(requiredHeader)) < 0)
+                throw new InvalidOperationException(
+                    $"Kolom {requiredHeader} tidak ditemukan pada sheet Attendance");
+        }
+
+        var missingHeaders = AttendanceCheckoutHeaders
+            .Where(requiredHeader =>
+                headers.FindIndex(header => NormalizeHeader(header) == NormalizeHeader(requiredHeader)) < 0)
+            .ToList();
+        if (missingHeaders.Count == 0) return rows;
+
+        var lastHeaderIndex = headers.FindLastIndex(header => !string.IsNullOrWhiteSpace(header));
+        if (lastHeaderIndex + missingHeaders.Count >= 52)
+            throw new InvalidOperationException("Tidak ada kolom kosong untuk menambahkan data check-out pada sheet Attendance");
+
+        var firstNewColumn = lastHeaderIndex + 1;
+        var lastNewColumn = firstNewColumn + missingHeaders.Count - 1;
+        await sheets.UpdateAsync(
+            $"'Attendance'!{ColumnName(firstNewColumn)}1:{ColumnName(lastNewColumn)}1",
+            [missingHeaders.Cast<object>().ToList()],
+            cancellationToken);
+
+        for (var index = 0; index < missingHeaders.Count; index++)
+        {
+            headers.Add(missingHeaders[index]);
+            rows[0].Add(missingHeaders[index]);
+        }
+        return rows;
+    }
+
+    private static List<string> GetAttendanceHeaders(IList<IList<object>> rows) =>
+        rows[0].Select(Convert.ToString).Select(value => value?.Trim() ?? string.Empty).ToList();
+
+    private static int GetRequiredHeaderIndex(IReadOnlyList<string> headers, string name)
+    {
+        var index = headers.ToList().FindIndex(header => NormalizeHeader(header) == NormalizeHeader(name));
+        return index >= 0
+            ? index
+            : throw new InvalidOperationException($"Kolom {name} tidak ditemukan pada sheet Attendance");
+    }
+
+    private static List<int> FindAttendanceRows(
+        IList<IList<object>> rows,
+        int eventColumn,
+        int participantColumn,
+        int sessionColumn,
+        string eventId,
+        string participantId,
+        string sessionId)
+    {
+        var matchingRows = new List<int>();
+        for (var index = 1; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            if (Cell(row, eventColumn).Trim() == eventId &&
+                Cell(row, participantColumn).Trim() == participantId &&
+                Cell(row, sessionColumn).Trim() == sessionId)
+                matchingRows.Add(index);
+        }
+
+        return matchingRows;
+    }
+
+    private static string AttendanceCellRange(int columnIndex, int rowIndex)
+    {
+        var column = ColumnName(columnIndex);
+        return $"'Attendance'!{column}{rowIndex}:{column}{rowIndex}";
+    }
+
+    private static string ColumnName(int zeroBasedIndex)
+    {
+        var columnNumber = zeroBasedIndex + 1;
+        var name = string.Empty;
+        while (columnNumber > 0)
+        {
+            columnNumber--;
+            name = (char)('A' + columnNumber % 26) + name;
+            columnNumber /= 26;
+        }
+
+        return name;
     }
 
     private async Task<string?> ValidateSessionAsync(
@@ -507,7 +810,7 @@ public sealed class OmsService(
         var sessions = await ListSessionsAsync(eventId, cancellationToken);
         return sessions.Any(session => session.SessionId == sessionId && session.Status == "Active")
             ? null
-            : "SESI TIDAK AKTIF.";
+            : "SESI TIDAK AKTIF";
     }
 
     private async Task<OmsEvent> GetEventAsync(string eventId, CancellationToken cancellationToken)
@@ -611,6 +914,26 @@ public sealed class OmsService(
     private static string Get(IReadOnlyDictionary<string, string> row, string key) =>
         row.TryGetValue(key, out var value) ? value.Trim() : string.Empty;
 
-    private static DateTimeOffset ParseDate(string value) =>
-        DateTimeOffset.TryParse(value, out var date) ? date : DateTimeOffset.MinValue;
+    private static DateTimeOffset ParseDate(string value)
+    {
+        if (DateTime.TryParseExact(
+            value,
+            "dd/MM/yyyy HH:mm:ss",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var jakartaTime))
+        {
+            return new DateTimeOffset(
+                DateTime.SpecifyKind(jakartaTime, DateTimeKind.Unspecified),
+                TimeSpan.FromHours(7));
+        }
+
+        return DateTimeOffset.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal,
+            out var date)
+            ? date
+            : DateTimeOffset.MinValue;
+    }
 }

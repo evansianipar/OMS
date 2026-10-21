@@ -20,7 +20,7 @@ public sealed class AccountController : Controller
         if (string.IsNullOrWhiteSpace(configuration["Authentication:Google:ClientId"]) ||
             string.IsNullOrWhiteSpace(configuration["Authentication:Google:ClientSecret"]))
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                "OAuth Google belum dikonfigurasi pada server OMS.");
+                "OAuth Google belum dikonfigurasi pada server OMS");
 
         return Challenge(
             new AuthenticationProperties { RedirectUri = "/account/sheets-connected" },
@@ -35,7 +35,7 @@ public sealed class AccountController : Controller
         if (!store.HasCredential)
             return Redirect("/account/sheets-connect-failed");
         return Content(
-            "Akses spreadsheet dan email pengirim berhasil dihubungkan. Sekarang buka halaman utama OMS dan login menggunakan akun panitia.",
+            "Akses spreadsheet dan email pengirim berhasil dihubungkan. Sekarang buka halaman utama OMS dan login menggunakan akun panitia",
             "text/plain; charset=utf-8");
     }
 
@@ -48,7 +48,7 @@ public sealed class AccountController : Controller
             .Value.SheetsUser;
         return new ContentResult
         {
-            Content = $"Akses Google Sheets belum terhubung. Pastikan Anda menggunakan akun {sheetsUser} dan aplikasi OAuth diizinkan oleh kebijakan Workspace.",
+            Content = $"Akses Google Sheets belum terhubung. Pastikan Anda menggunakan akun {sheetsUser} dan aplikasi OAuth diizinkan oleh kebijakan Workspace",
             ContentType = "text/plain; charset=utf-8",
             StatusCode = StatusCodes.Status400BadRequest
         };

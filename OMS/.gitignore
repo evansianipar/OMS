@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+TestResults/
+
+# IDE and per-user files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Debug symbols and diagnostics
+*.pdb
+*.mdb
+*.log
+*.stackdump
+
+# Temporary and local environment files
+*.tmp
+*.temp
+.env
+.env.*
+!.env.example
+
+# Operating system files
+.DS_Store
+Thumbs.db

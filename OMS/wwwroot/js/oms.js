@@ -1,10 +1,41 @@
 (() => {
-    const state = { scanner: null, starting: false, scanning: false, requestInFlight: false, participantPage: 1, reportPage: 1, participantQr: null };
+    const state = { scanner: null, starting: false, scanning: false, requestInFlight: false, checkoutInFlight: false, checkoutCandidate: null, dashboardRefreshInFlight: false, participantPage: 1, reportPage: 1, participantQr: null };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
     const eventSelect = document.getElementById('event-select');
     const currentPage = document.querySelector('.app-shell')?.dataset.page ?? 'dashboard';
     const canManage = document.querySelector('.app-shell')?.dataset.canManage === 'true';
+    const dashboardChannel = 'BroadcastChannel' in window ? new BroadcastChannel('oms-attendance') : null;
     const eventId = () => eventSelect?.value ?? '';
+
+    function setMobileMenu(open) {
+        const sidebar = document.querySelector('.sidebar');
+        const toggle = document.querySelector('.menu-toggle');
+        const backdrop = document.querySelector('.menu-backdrop');
+        const wasOpen = sidebar?.classList.contains('is-open') ?? false;
+        const isOpen = open && window.matchMedia('(max-width: 900px)').matches;
+        sidebar?.classList.toggle('is-open', isOpen);
+        backdrop?.classList.toggle('is-visible', isOpen);
+        toggle?.setAttribute('aria-expanded', String(isOpen));
+        toggle?.setAttribute('aria-label', isOpen ? 'Tutup menu' : 'Buka menu');
+        sidebar?.setAttribute('aria-hidden', String(!isOpen && window.matchMedia('(max-width: 900px)').matches));
+        if (isOpen && !wasOpen) sidebar?.querySelector('.nav-item')?.focus();
+        else if (!isOpen && wasOpen) toggle?.focus();
+    }
+
+    document.querySelector('.menu-toggle')?.addEventListener('click', () => {
+        const isOpen = document.querySelector('.menu-toggle')?.getAttribute('aria-expanded') === 'true';
+        setMobileMenu(!isOpen);
+    });
+    document.querySelector('.menu-backdrop')?.addEventListener('click', () => setMobileMenu(false));
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(link =>
+        link.addEventListener('click', () => setMobileMenu(false)));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') setMobileMenu(false);
+    });
+    const desktopViewport = window.matchMedia('(min-width: 901px)');
+    if (desktopViewport.addEventListener) desktopViewport.addEventListener('change', () => setMobileMenu(false));
+    else desktopViewport.addListener(() => setMobileMenu(false));
+    setMobileMenu(false);
 
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -31,10 +62,10 @@
             }
         });
         if (response.status === 401 || response.status === 403) {
-            throw new Error('Sesi login berakhir atau akses Anda dicabut. Muat ulang dan masuk kembali.');
+            throw new Error('Sesi login berakhir atau akses Anda dicabut. Muat ulang dan masuk kembali');
         }
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.detail || payload.title || 'Permintaan ke server gagal.');
+        if (!response.ok) throw new Error(payload.detail || payload.title || 'Permintaan ke server gagal');
         return payload;
     }
 
@@ -79,21 +110,82 @@
         element.classList.toggle('success', isSuccess);
     }
 
+    function setCheckoutCandidate(result, method = 'QR') {
+        const panel = document.getElementById('checkout-confirmation');
+        const button = document.getElementById('confirm-checkout');
+        const details = document.getElementById('checkout-participant');
+        if (!panel || !button || !details) return;
+
+        if (result?.status !== 'DUPLICATE' || result.checkOutTime || !result.participant) {
+            state.checkoutCandidate = null;
+            panel.classList.add('d-none');
+            button.disabled = false;
+            return;
+        }
+
+        state.checkoutCandidate = {
+            participantId: result.participant.participantId,
+            method,
+            attendanceTime: result.attendanceTime,
+            eventId: eventId(),
+            sessionId: document.getElementById('session-select')?.value || null
+        };
+        details.innerHTML = `${escapeHtml(result.participant.fullName)} · ${escapeHtml(result.participant.employeeNumber)} · ${escapeHtml(result.participant.department)}<br>` +
+            `Check-in: ${escapeHtml(formatDate(result.attendanceTime))}. Pastikan identitas peserta benar`;
+        panel.classList.remove('d-none');
+        button.disabled = false;
+    }
+
+    async function confirmCheckout() {
+        if (!state.checkoutCandidate || state.checkoutInFlight) return;
+        const button = document.getElementById('confirm-checkout');
+        state.checkoutInFlight = true;
+        button.disabled = true;
+        try {
+            const result = await api('/api/oms/scanner/check-out', {
+                method: 'POST',
+                body: JSON.stringify({
+                    eventId: state.checkoutCandidate.eventId,
+                    sessionId: state.checkoutCandidate.sessionId,
+                    participantId: state.checkoutCandidate.participantId,
+                    method: state.checkoutCandidate.method
+                })
+            });
+            setCheckoutCandidate(null);
+            displayResult(result);
+            if (result.status === 'CHECK_OUT_SUCCESS') {
+                dashboardChannel?.postMessage({ eventId: eventId() });
+                if (currentPage === 'dashboard') refreshDashboard(true);
+            }
+        } catch (error) {
+            displayResult({ status: 'ERROR', message: error.message });
+            button.disabled = false;
+        } finally {
+            state.checkoutInFlight = false;
+        }
+    }
+
+    document.getElementById('confirm-checkout')?.addEventListener('click', confirmCheckout);
+    document.getElementById('session-select')?.addEventListener('change', () => {
+        setCheckoutCandidate(null);
+        document.getElementById('inline-scan-result')?.remove();
+    });
+
     async function startScanner() {
         if (state.starting || state.scanning) return;
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-            setCameraMessage('Live camera memerlukan HTTPS (atau localhost) dan browser yang mendukung getUserMedia.', true);
+            setCameraMessage('Live camera memerlukan HTTPS (atau localhost) dan browser yang mendukung getUserMedia', true);
             return;
         }
         if (typeof Html5Qrcode === 'undefined') {
-            setCameraMessage('Library scanner gagal dimuat. Periksa koneksi/CDN dan muat ulang halaman.', true);
+            setCameraMessage('Library scanner gagal dimuat. Periksa koneksi/CDN dan muat ulang halaman', true);
             return;
         }
 
         state.starting = true;
         const startButton = document.getElementById('start-scan');
         startButton.disabled = true;
-        setCameraMessage('Meminta izin dan menginisialisasi kamera...');
+        setCameraMessage('Meminta izin dan menyiapkan kamera');
         let permissionStream;
         try {
             permissionStream = await navigator.mediaDevices.getUserMedia({
@@ -103,7 +195,7 @@
             permissionStream.getTracks().forEach(track => track.stop());
             permissionStream = null;
             const cameras = await Html5Qrcode.getCameras();
-            if (!cameras.length) throw new DOMException('Tidak ada kamera ditemukan.', 'NotFoundError');
+            if (!cameras.length) throw new DOMException('Tidak ada kamera ditemukan', 'NotFoundError');
             const camera = cameras.find(item => /back|rear|environment|belakang/i.test(item.label)) ?? cameras[0];
             state.scanner = new Html5Qrcode('qr-reader');
             await state.scanner.start(
@@ -114,7 +206,7 @@
             );
             state.scanning = true;
             document.getElementById('stop-scan').disabled = false;
-            setCameraMessage(`Kamera aktif: ${camera.label || 'kamera perangkat'}. Arahkan QR pada bingkai.`, false, true);
+            setCameraMessage(`Kamera aktif: ${camera.label || 'kamera perangkat'}. Arahkan QR pada bingkai`, false, true);
         } catch (error) {
             permissionStream?.getTracks().forEach(track => track.stop());
             if (state.scanner) {
@@ -131,13 +223,13 @@
     function cameraError(error) {
         const name = error?.name ?? '';
         if (name === 'NotAllowedError' || name === 'PermissionDeniedError')
-            return 'Izin kamera ditolak. Izinkan kamera untuk domain aplikasi OMS, muat ulang halaman, lalu coba lagi.';
+            return 'Izin kamera ditolak. Izinkan kamera untuk domain aplikasi OMS, muat ulang halaman, lalu coba lagi';
         if (name === 'NotFoundError' || name === 'DevicesNotFoundError')
-            return 'Tidak ada kamera yang ditemukan pada perangkat.';
+            return 'Tidak ada kamera yang ditemukan pada perangkat';
         if (name === 'NotReadableError' || name === 'TrackStartError')
-            return 'Kamera sedang digunakan aplikasi/tab lain atau diblokir sistem operasi. Tutup aplikasi kamera lain lalu coba kembali.';
+            return 'Kamera sedang digunakan aplikasi/tab lain atau diblokir sistem operasi. Tutup aplikasi kamera lain lalu coba kembali';
         if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError')
-            return 'Kamera tidak mendukung mode yang diminta. Coba kamera lain atau gunakan QR dari foto.';
+            return 'Kamera tidak mendukung mode yang diminta. Coba kamera lain atau gunakan QR dari foto';
         return `Kamera gagal dimulai (${name || 'Error'}): ${error?.message || 'Kesalahan tidak diketahui'}`;
     }
 
@@ -158,11 +250,11 @@
 
     async function scanImage(file) {
         if (!file) return;
-        if (file.size > 10 * 1024 * 1024) return notify('Ukuran gambar maksimal 10 MB.', 'error');
-        if (state.scanning || state.starting) return notify('Hentikan scanner kamera sebelum memilih gambar.', 'warning');
-        if (typeof Html5Qrcode === 'undefined') return notify('Library QR belum termuat.', 'error');
+        if (file.size > 10 * 1024 * 1024) return notify('Ukuran gambar maksimal 10 MB', 'error');
+        if (state.scanning || state.starting) return notify('Hentikan scanner kamera sebelum memilih gambar', 'warning');
+        if (typeof Html5Qrcode === 'undefined') return notify('Library QR belum termuat', 'error');
         const reader = new Html5Qrcode('qr-reader');
-        setCameraMessage('Membaca QR dari gambar...');
+        setCameraMessage('Membaca QR dari gambar');
         try {
             const token = await reader.scanFile(file, true);
             await processQr(token);
@@ -187,7 +279,10 @@
                 })
             });
             displayResult(result);
-            if (result.status === 'SUCCESS' && currentPage === 'dashboard') refreshDashboard();
+            if (result.status === 'SUCCESS') {
+                dashboardChannel?.postMessage({ eventId: eventId() });
+                if (currentPage === 'dashboard') refreshDashboard(true);
+            }
         } catch (error) {
             displayResult({ status: 'ERROR', message: error.message });
         } finally {
@@ -195,19 +290,41 @@
         }
     }
 
-    function displayResult(result) {
+    function displayResult(result, method = 'QR') {
         const area = document.getElementById('scan-result-area');
         const id = area ? 'inline-scan-result' : 'scan-result-toast';
         document.getElementById(id)?.remove();
         const container = area ?? document.getElementById('toast-container');
         const box = document.createElement('div');
+        const status = {
+            SUCCESS: { alert: 'alert-success', title: 'Check-in berhasil' },
+            CHECK_OUT_SUCCESS: { alert: 'alert-success', title: 'Check-out berhasil' },
+            DUPLICATE: {
+                alert: 'alert-warning',
+                title: result.checkOutTime ? 'Peserta sudah check-in dan check-out' : 'Peserta sudah check-in'
+            },
+            ALREADY_CHECKED_OUT: { alert: 'alert-warning', title: 'Peserta sudah check-out' },
+            CHECKIN_REQUIRED: { alert: 'alert-danger', title: 'Check-in belum tercatat' }
+        }[result.status] ?? { alert: 'alert-danger', title: 'Check-in gagal' };
+        setCheckoutCandidate(result, method);
         box.id = id;
-        box.className = `scan-result ${result.status === 'SUCCESS' ? '' : result.status === 'DUPLICATE' ? 'duplicate' : 'error'}${area ? ' scan-result-inline' : ''}`;
+        box.className = `alert ${status.alert} scan-alert d-flex align-items-start gap-3${area ? ' scan-result-inline' : ''}`;
+        const successful = result.status === 'SUCCESS' || result.status === 'CHECK_OUT_SUCCESS';
+        box.setAttribute('role', successful ? 'status' : 'alert');
         const participant = result.participant;
-        box.innerHTML = `<strong>${escapeHtml(result.message)}</strong>` +
-            (participant ? `<span>${escapeHtml(participant.fullName)} · ${escapeHtml(participant.employeeNumber)} · ${escapeHtml(participant.department)}<br>${result.status === 'DUPLICATE' ? 'Waktu sebelumnya' : 'Waktu server'}: ${escapeHtml(formatDate(result.attendanceTime))}</span>` : '');
+        const timeLabel = result.status === 'CHECK_OUT_SUCCESS' || result.status === 'ALREADY_CHECKED_OUT' ||
+            (result.status === 'DUPLICATE' && result.checkOutTime)
+            ? 'Waktu check-out'
+            : result.status === 'DUPLICATE' ? 'Waktu check-in' : 'Waktu';
+        const checkmark = successful
+            ? '<span class="checkmark-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></span>'
+            : '';
+        box.innerHTML = `${checkmark}<div><strong>${status.title}</strong><div>${escapeHtml(result.message)}</div>` +
+            (participant ? `<small>${escapeHtml(participant.fullName)} · ${escapeHtml(participant.employeeNumber)} · ${escapeHtml(participant.department)}<br>${timeLabel}: ${escapeHtml(formatDate(result.checkOutTime || result.attendanceTime))}</small>` : '') +
+            '</div>';
         container.appendChild(box);
-        if (!area) setTimeout(() => box.remove(), 7000);
+        if (successful || result.status === 'DUPLICATE' || result.status === 'ALREADY_CHECKED_OUT')
+            setTimeout(() => box.remove(), 3000);
     }
 
     let searchTimer;
@@ -221,7 +338,7 @@
         const results = document.getElementById('manual-results');
         if (!results) return;
         if (query.length < 2) {
-            results.innerHTML = '<span class="text-secondary small">Masukkan minimal 2 karakter NIK atau nama.</span>';
+            results.innerHTML = '<span class="text-secondary small">Masukkan minimal 2 karakter NIK atau nama</span>';
             return;
         }
         try {
@@ -245,15 +362,17 @@
             document.getElementById('participant-prev').disabled = pageData.page <= 1;
             document.getElementById('participant-next').disabled = pageData.page >= pageCount;
             document.getElementById('participant-table').innerHTML = pageData.items.map(participant =>
-                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.department || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${participant.isActive && canManage ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button>` : '-'}</td></tr>`
+                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.department || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${participant.isActive && canManage ? `<div class="d-flex flex-wrap gap-2"><button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button></div>` : '-'}</td></tr>`
             ).join('') || '<tr><td colspan="5" class="text-secondary">Tidak ada peserta.</td></tr>';
             document.querySelectorAll('[data-qr-participant]').forEach(button =>
                 button.addEventListener('click', () => issueParticipantQr(button.dataset.qrParticipant)));
+            document.querySelectorAll('[data-send-invitation]').forEach(button =>
+                button.addEventListener('click', () => sendIndividualInvitation(button)));
         } catch (error) { notify(error.message, 'error'); }
     }
 
     async function issueParticipantQr(participantId) {
-        if (typeof QRCode === 'undefined') return notify('Library QR Code belum termuat.', 'error');
+        if (typeof QRCode === 'undefined') return notify('Library QR Code belum termuat', 'error');
         if (!confirm('QR baru akan membatalkan QR lama peserta ini. Lanjutkan?')) return;
         try {
             const result = await api('/api/oms/participants/issue-qr', {
@@ -268,25 +387,25 @@
             state.participantQr = { employeeNumber: result.employeeNumber, fullName: result.fullName };
             document.getElementById('download-qr').onclick = () => {
                 const image = target.querySelector('canvas')?.toDataURL('image/png') || target.querySelector('img')?.src;
-                if (!image) return notify('QR belum siap diunduh.', 'error');
+                if (!image) return notify('QR belum siap diunduh', 'error');
                 const anchor = document.createElement('a');
                 anchor.href = image;
                 anchor.download = `QR-${state.participantQr.employeeNumber}.png`;
                 anchor.click();
             };
-            notify('QR diterbitkan. QR sebelumnya untuk peserta ini sudah tidak berlaku.');
+            notify('QR diterbitkan. QR sebelumnya untuk peserta ini sudah tidak berlaku');
         } catch (error) { notify(error.message, 'error'); }
     }
 
     async function importMaster() {
-        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu.', 'warning');
-        if (!confirm('Impor karyawan baru dari sheet List All EMP LENGKAP? Nomor pegawai yang sudah terdaftar tidak akan diduplikasi.')) return;
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
+        if (!confirm('Impor karyawan baru dari sheet List All EMP LENGKAP? Nomor pegawai yang sudah terdaftar tidak akan diduplikasi')) return;
         try {
             const result = await api('/api/oms/participants/import-master', {
                 method: 'POST',
                 body: JSON.stringify({ eventId: eventId() })
             });
-            notify(`Impor selesai: ${result.imported} baru, ${result.existing} sudah terdaftar, ${result.invalid} tidak valid.`);
+            notify(`Impor selesai: ${result.imported} baru, ${result.existing} sudah terdaftar, ${result.invalid} tidak valid`);
             await loadParticipants();
         } catch (error) { notify(error.message, 'error'); }
     }
@@ -320,20 +439,23 @@
                     participantId
                 })
             });
-            displayResult(result);
-            if (result.status === 'SUCCESS' && currentPage === 'dashboard') refreshDashboard();
+            displayResult(result, 'MANUAL');
+            if (result.status === 'SUCCESS') {
+                dashboardChannel?.postMessage({ eventId: eventId() });
+                if (currentPage === 'dashboard') refreshDashboard(true);
+            }
         } catch (error) { displayResult({ status: 'ERROR', message: error.message }); }
     }
 
     async function sendInvitations() {
-        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu.', 'warning');
-        if (!confirm('Kirim email undangan QR kepada semua peserta aktif yang memiliki email valid? QR akan diterbitkan ulang dan QR lama tidak berlaku.')) return;
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
+        if (!confirm('Kirim email undangan QR kepada semua peserta aktif yang memiliki email valid? QR akan diterbitkan ulang dan QR lama tidak berlaku. QR yang baru dapat digunakan untuk check-in dan check-out.')) return;
         const button = document.getElementById('send-invitations');
         const progress = document.getElementById('invite-progress');
         button.disabled = true;
         progress.classList.remove('d-none');
         progress.className = 'alert alert-info';
-        progress.textContent = 'Sedang membuat QR dan mengirim undangan. Tunggu hingga proses selesai.';
+        progress.textContent = 'Sedang membuat QR dan mengirim undangan. Tunggu hingga proses selesai';
         try {
             let offset = 0;
             let total = 0;
@@ -354,11 +476,11 @@
                 offset += result.processed;
                 progress.textContent = total
                     ? `Mengirim undangan: ${Math.min(offset, total)} dari ${total} diproses · ${sent} terkirim · ${failed} gagal`
-                    : `Tidak ada peserta aktif dengan alamat email valid. ${skipped} peserta dilewati.`;
+                    : `Tidak ada peserta aktif dengan alamat email valid. ${skipped} peserta dilewati`;
                 if (result.processed === 0) break;
             } while (offset < total);
             progress.className = `alert ${failed ? 'alert-warning' : 'alert-success'}`;
-            progress.textContent = `Selesai: ${sent} terkirim, ${failed} gagal, ${skipped} dilewati karena email kosong/tidak valid.`;
+            progress.textContent = `Selesai: ${sent} terkirim, ${failed} gagal, ${skipped} dilewati karena email kosong/tidak valid`;
             if (errors.length) notify(errors.slice(0, 3).join(' | '), 'error');
         } catch (error) {
             progress.className = 'alert alert-danger';
@@ -368,46 +490,97 @@
         }
     }
 
+    async function sendIndividualInvitation(button) {
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
+        const participantId = button.dataset.sendInvitation;
+        if (!participantId || !confirm('Kirim ulang undangan kepada peserta ini? QR akan diterbitkan ulang dan QR lama peserta ini tidak berlaku.')) return;
+
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = 'Mengirim...';
+        try {
+            await api('/api/oms/participants/send-invitation', {
+                method: 'POST',
+                body: JSON.stringify({ eventId: eventId(), participantId })
+            });
+            notify('Undangan berhasil dikirim. QR yang baru dapat digunakan untuk check-in dan check-out');
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+
     async function loadAttendanceReport() {
         if (currentPage !== 'data' || !eventId() || !document.getElementById('attendance-report-body')) return;
         try {
             const data = await api(`/api/oms/reports/attendance?eventId=${encodeURIComponent(eventId())}&page=${state.reportPage}&pageSize=50`);
             const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
             document.getElementById('report-page-label').textContent =
-                `${data.total} peserta dalam laporan kegiatan terpilih.`;
+                `${data.total} peserta dalam laporan kegiatan terpilih`;
             document.getElementById('report-page-control').textContent = `Halaman ${data.page} dari ${pages}`;
             document.getElementById('report-prev').disabled = data.page <= 1;
             document.getElementById('report-next').disabled = data.page >= pages;
             document.getElementById('attendance-report-body').innerHTML = data.items.map(item =>
-                `<tr><td>${escapeHtml(item.employeeNumber)}</td><td>${escapeHtml(item.fullName)}</td><td>${escapeHtml(item.department || '-')}</td><td><span class="badge ${item.status === 'Hadir' ? 'text-bg-success' : 'text-bg-light'}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(formatDate(item.attendanceTime))}</td><td>${escapeHtml(item.method || '-')}</td></tr>`
-            ).join('') || '<tr><td colspan="6" class="text-secondary">Belum ada peserta pada kegiatan ini.</td></tr>';
+                `<tr><td>${escapeHtml(item.employeeNumber)}</td><td>${escapeHtml(item.fullName)}</td><td>${escapeHtml(item.department || '-')}</td><td><span class="badge ${item.status === 'Hadir' ? 'text-bg-success' : 'text-bg-light'}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(formatDate(item.attendanceTime))}</td><td>${escapeHtml(formatDate(item.checkOutTime))}</td><td>${escapeHtml([item.method, item.checkOutMethod].filter(Boolean).join(' / ') || '-')}</td></tr>`
+            ).join('') || '<tr><td colspan="7" class="text-secondary">Belum ada peserta pada kegiatan ini.</td></tr>';
         } catch (error) {
             document.getElementById('attendance-report-body').innerHTML =
-                `<tr><td colspan="6" class="text-danger">${escapeHtml(error.message)}</td></tr>`;
+                `<tr><td colspan="7" class="text-danger">${escapeHtml(error.message)}</td></tr>`;
         }
     }
 
-    async function refreshDashboard() {
+    async function refreshDashboard(showError = false) {
+        if (state.dashboardRefreshInFlight || !document.getElementById('stat-total')) return;
+        state.dashboardRefreshInFlight = true;
+        const syncStatus = document.getElementById('dashboard-sync-status');
         try {
             const data = await api(`/api/oms/dashboard?eventId=${encodeURIComponent(eventId())}`);
-            document.getElementById('stat-total').textContent = data.total;
-            document.getElementById('stat-attended').textContent = data.attended;
-            document.getElementById('stat-absent').textContent = data.absent;
-            document.getElementById('stat-percent').textContent = `${data.attendancePercent}%`;
+            updateDashboardStat('stat-total', data.total);
+            updateDashboardStat('stat-attended', data.attended);
+            updateDashboardStat('stat-absent', data.absent);
+            updateDashboardStat('stat-percent', `${data.attendancePercent}%`);
             document.getElementById('attendance-progress').style.width = `${data.attendancePercent}%`;
             document.getElementById('department-body').innerHTML = data.departments.map(item =>
                 `<tr><td>${escapeHtml(item.department)}</td><td>${item.total}</td><td>${item.attended}</td><td><div class="progress"><div class="progress-bar" style="width:${item.total ? item.attended * 100 / item.total : 0}%"></div></div></td></tr>`
-            ).join('');
+            ).join('') || '<tr><td colspan="4" class="text-secondary">Belum ada data kehadiran</td></tr>';
             document.getElementById('recent-list').innerHTML = data.recent.map(item =>
                 `<div class="activity-item"><span class="activity-dot"></span><div><strong>${escapeHtml(item.fullName)}</strong><small>${escapeHtml(item.employeeNumber)} · ${escapeHtml(item.department)} · ${escapeHtml(formatDate(item.attendanceTime))}</small></div></div>`
             ).join('') || '<span class="small text-secondary">Belum ada check-in.</span>';
             document.getElementById('absent-list').innerHTML = data.absentParticipants.map(item =>
                 `<span class="absent-chip">${escapeHtml(item.fullName)} · ${escapeHtml(item.employeeNumber)}</span>`
-            ).join('') || '<span class="small text-secondary">Semua peserta sudah check-in.</span>';
-        } catch (error) { notify(error.message, 'error'); }
+            ).join('') || '<span class="small text-secondary">Semua peserta sudah check-in</span>';
+            if (syncStatus) {
+                syncStatus.textContent = `Diperbarui otomatis pukul ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+                syncStatus.removeAttribute('title');
+            }
+        } catch (error) {
+            if (syncStatus) {
+                syncStatus.textContent = 'Pembaruan otomatis tertunda';
+                syncStatus.title = error.message;
+            }
+            if (showError) notify(error.message, 'error');
+        } finally {
+            state.dashboardRefreshInFlight = false;
+        }
+    }
+
+    function updateDashboardStat(id, value) {
+        const element = document.getElementById(id);
+        const nextValue = String(value);
+        if (element.textContent === nextValue) return;
+        element.textContent = nextValue;
+        element.classList.remove('stat-updated');
+        void element.offsetWidth;
+        element.classList.add('stat-updated');
+        element.addEventListener('animationend', () => element.classList.remove('stat-updated'), { once: true });
     }
 
     function formatDate(value) {
+        const localTimestamp = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(value ?? ''));
+        if (localTimestamp)
+            return `${localTimestamp[1]}/${localTimestamp[2]}/${localTimestamp[3]} ${localTimestamp[4]}:${localTimestamp[5]}:${localTimestamp[6]}`;
         const date = new Date(value);
         return value && !Number.isNaN(date.valueOf()) ? date.toLocaleString('id-ID') : '-';
     }
@@ -416,6 +589,10 @@
         const url = new URL(window.location.href);
         url.searchParams.set('eventId', eventId());
         window.location.assign(url);
+    });
+    dashboardChannel?.addEventListener('message', message => {
+        if (currentPage === 'dashboard' && message.data?.eventId === eventId())
+            refreshDashboard();
     });
     document.getElementById('participant-search')?.addEventListener('input', () => {
         clearTimeout(searchTimer);
@@ -448,7 +625,11 @@
         state.reportPage++;
         loadAttendanceReport();
     });
-    if (currentPage === 'scanner') {
+    if (currentPage === 'dashboard') {
+        window.setInterval(() => {
+            if (!document.hidden) refreshDashboard();
+        }, 15000);
+    } else if (currentPage === 'scanner') {
         loadSessions();
         document.getElementById('manual-search')?.focus();
     } else if (currentPage === 'participants') {
@@ -458,6 +639,7 @@
     }
     window.addEventListener('beforeunload', () => {
         if (state.scanner && state.scanning) state.scanner.stop().catch(() => {});
+        dashboardChannel?.close();
     });
 
     window.openScanner = openScanner;

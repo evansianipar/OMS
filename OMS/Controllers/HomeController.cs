@@ -33,7 +33,7 @@ public sealed class HomeController(OmsService oms) : Controller
             HttpContext.RequestServices.GetRequiredService<ILogger<HomeController>>()
                 .LogError(exception, "Unable to load OMS home page.");
             return View(new HomeViewModel([], null,
-                "Data OMS tidak dapat dimuat. Administrator perlu memeriksa konfigurasi akses Google Sheets.",
+                "Data OMS tidak dapat dimuat. Administrator perlu memeriksa konfigurasi akses Google Sheets",
                 currentPage));
         }
     }

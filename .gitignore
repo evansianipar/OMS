@@ -1,0 +1,30 @@
+# Visual Studio user and cache files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# .NET build output
+**/bin/
+**/obj/
+**/artifacts/
+**/publish/
+**/TestResults/
+
+# Debug symbols and diagnostics
+*.pdb
+*.mdb
+*.log
+*.stackdump
+
+# Temporary and local environment files
+*.tmp
+*.temp
+.env
+.env.*
+!.env.example
+
+# Operating system files
+.DS_Store
+Thumbs.db

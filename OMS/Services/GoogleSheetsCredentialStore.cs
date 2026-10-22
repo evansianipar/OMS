@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
+using OMS.Configuration;
 
 namespace OMS.Services;
 
@@ -7,13 +9,15 @@ public sealed class GoogleSheetsCredentialStore
     private readonly IDataProtector _protector;
     private readonly string _filePath;
 
-    public GoogleSheetsCredentialStore(IDataProtectionProvider protectionProvider)
+    public GoogleSheetsCredentialStore(
+        IDataProtectionProvider protectionProvider,
+        IOptions<GoogleWorkspaceOptions> options)
     {
         _protector = protectionProvider.CreateProtector("OMS.GoogleSheetsRefreshToken.v1");
-        _filePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OMS",
-            "google-sheets-token.dat");
+        var credentialDirectory = string.IsNullOrWhiteSpace(options.Value.CredentialDirectory)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OMS")
+            : options.Value.CredentialDirectory;
+        _filePath = Path.Combine(credentialDirectory, "google-sheets-token.dat");
     }
 
     public bool HasCredential => File.Exists(_filePath);

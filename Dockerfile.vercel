@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY OMS/OMS.csproj OMS/
+RUN dotnet restore OMS/OMS.csproj
+
+COPY OMS/ OMS/
+RUN dotnet publish OMS/OMS.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_HTTP_PORTS=80
+EXPOSE 80
+
+CMD ["sh", "-c", "dotnet OMS.dll --urls http://0.0.0.0:${PORT:-80}"]

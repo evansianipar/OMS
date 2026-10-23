@@ -109,22 +109,14 @@ builder.Services
         };
         options.Events = new OpenIdConnectEvents
         {
-            OnRedirectToIdentityProvider = context =>
-            {
-                context.ProtocolMessage.SetParameter("hd", workspace.Domain);
-                return Task.CompletedTask;
-            },
             OnTokenValidated = async context =>
             {
                 var email = context.Principal?.FindFirst("email")?.Value?.Trim().ToLowerInvariant();
-                var hostedDomain = context.Principal?.FindFirst("hd")?.Value?.Trim().ToLowerInvariant();
                 var verified = context.Principal?.FindFirst("email_verified")?.Value;
                 if (string.IsNullOrWhiteSpace(email) ||
-                    !string.Equals(verified, "true", StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(hostedDomain, workspace.Domain, StringComparison.OrdinalIgnoreCase) ||
-                    !email.EndsWith("@" + workspace.Domain, StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(verified, "true", StringComparison.OrdinalIgnoreCase))
                 {
-                    context.Fail("Gunakan akun Google Workspace organisasi yang telah diverifikasi.");
+                    context.Fail("Gunakan akun Google dengan alamat email yang telah diverifikasi.");
                     return;
                 }
 

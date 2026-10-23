@@ -25,6 +25,8 @@ Vercel's Container Runtime can run the OMS image built from `Dockerfile.vercel`.
 
 Do not commit OAuth secrets or the Google Sheets refresh token. Rotate any OAuth client secret that has been exposed.
 
+OMS login accepts any verified Google account, including personal Gmail, but only if its email is explicitly listed as active in the `Users` sheet. Configure the Google OAuth consent screen for the appropriate audience and add any required test users when the app remains in Testing status. The separate Google Sheets connection remains restricted to the configured owner account and Workspace domain.
+
 ### Production prerequisite: persistent credentials and data-protection keys
 
 The current OMS stores the Google Sheets refresh token in a file under the local application data directory by default. `GoogleWorkspace__CredentialDirectory` can override this path; on Vercel, `/tmp/oms-credentials` avoids colliding with the published `/app/OMS` executable. `/tmp` is only a temporary workaround and is not durable shared storage: redeployments, instance replacement, or multiple instances can lose the Sheets connection. ASP.NET Core Data Protection keys also use local storage by default and can prevent authentication cookies/OAuth state from being decrypted across instances.

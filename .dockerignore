@@ -1,0 +1,12 @@
+.git
+.vs
+.vercel
+**/bin
+**/obj
+**/publish
+**/TestResults
+**/*.user
+**/*.suo
+**/appsettings.Development.json
+**/secrets.json
+**/*.pdb

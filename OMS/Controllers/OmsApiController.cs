@@ -2,14 +2,48 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OMS.Models;
 using OMS.Services;
+using QRCoder;
 
 namespace OMS.Controllers;
 
 [ApiController]
 [Route("api/oms")]
 [Authorize(Policy = "OmsUser")]
-public sealed class OmsApiController(OmsService oms) : ControllerBase
+public sealed class OmsApiController(
+    OmsService oms,
+    OmsJsonDatabase database,
+    IConfiguration configuration,
+    IHostEnvironment environment) : ControllerBase
 {
+    [AllowAnonymous]
+    [HttpGet("/api/public/events/{eventId}/schedule")]
+    public async Task<IActionResult> PublicSchedule(string eventId, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var schedule = await oms.GetPublicEventScheduleAsync(eventId, cancellationToken);
+        return schedule is null ? NotFound() : Ok(schedule);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/api/public/events/{eventId}/participant-qr")]
+    public async Task<IActionResult> PublicParticipantQr(
+        string eventId,
+        [FromBody] PublicQrRequest request,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var participant = await oms.FindPublicParticipantByQrAsync(eventId, request.Token, cancellationToken);
+        if (participant is null) return NotFound();
+
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(request.Token, QRCodeGenerator.ECCLevel.Q);
+        var qrBytes = new PngByteQRCode(data).GetGraphic(8);
+        return Ok(new PublicParticipantQr(
+            participant.FullName,
+            participant.EmployeeNumber,
+            Convert.ToBase64String(qrBytes)));
+    }
+
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard([FromQuery] string eventId, CancellationToken cancellationToken)
     {
@@ -35,6 +69,63 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
         return Ok(new { eventId });
     }
 
+    [HttpPut("events/{eventId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateEvent(
+        string eventId,
+        [FromBody] EventCreateRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await oms.UpdateEventAsync(eventId, request, CurrentEmail(), cancellationToken);
+        return Ok(new { eventId });
+    }
+
+    [HttpDelete("events/{eventId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteEvent(string eventId, CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        return Ok(await oms.DeleteEventAsync(eventId, cancellationToken));
+    }
+
+    [HttpPost("events/{eventId}/schedule")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateScheduleItem(
+        string eventId,
+        [FromBody] ScheduleItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        var sessionId = await oms.CreateScheduleItemAsync(eventId, request, CurrentEmail(), cancellationToken);
+        return Ok(new { sessionId });
+    }
+
+    [HttpPut("events/{eventId}/schedule/{sessionId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateScheduleItem(
+        string eventId,
+        string sessionId,
+        [FromBody] ScheduleItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await oms.UpdateScheduleItemAsync(eventId, sessionId, request, CurrentEmail(), cancellationToken);
+        return Ok(new { sessionId });
+    }
+
+    [HttpDelete("events/{eventId}/schedule/{sessionId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteScheduleItem(
+        string eventId,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await oms.DeleteScheduleItemAsync(eventId, sessionId, CurrentEmail(), cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("participants")]
     public async Task<IActionResult> Participants(
         [FromQuery] string eventId,
@@ -47,6 +138,18 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
         return Ok(await oms.ListParticipantsAsync(eventId, query, page, pageSize, cancellationToken));
     }
 
+    [HttpDelete("participants/{participantId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteParticipant(
+        string participantId,
+        [FromQuery] string eventId,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await oms.DeleteParticipantAsync(eventId, participantId, cancellationToken);
+        return NoContent();
+    }
+
     [HttpPost("participants/import-master")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ImportMaster(
@@ -57,6 +160,17 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
         return Ok(await oms.ImportEmployeeMasterAsync(request.EventId, CurrentEmail(), cancellationToken));
     }
 
+    [HttpPost("employee-master")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportEmployeeMaster(
+        [FromBody] EmployeeMasterImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await database.ImportEmployeeMasterAsync(request, cancellationToken);
+        return Ok(new { imported = request.Rows.Count });
+    }
+
     [HttpPost("participants/send-invitations")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SendInvitations(
@@ -65,7 +179,7 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
     {
         await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
         return Ok(await oms.SendInvitationBatchAsync(
-            request.EventId, CurrentEmail(), request.Offset, request.BatchSize, cancellationToken));
+            request.EventId, CurrentEmail(), ScheduleUrl(request.EventId), request.Offset, request.BatchSize, cancellationToken));
     }
 
     [HttpPost("participants/send-invitation")]
@@ -76,7 +190,7 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
     {
         await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
         return Ok(await oms.SendIndividualInvitationAsync(
-            request.EventId, request.ParticipantId, CurrentEmail(), cancellationToken));
+            request.EventId, request.ParticipantId, CurrentEmail(), ScheduleUrl(request.EventId), cancellationToken));
     }
 
     [HttpPost("participants/issue-qr")]
@@ -165,4 +279,33 @@ public sealed class OmsApiController(OmsService oms) : ControllerBase
     private string CurrentEmail() =>
         User.FindFirst("email")?.Value
         ?? throw new UnauthorizedAccessException("Email akun Google tidak tersedia.");
+
+    private string ScheduleUrl(string eventId)
+    {
+        var configuredBaseUrl = configuration["OmsPublic:BaseUrl"];
+        Uri baseUri;
+        if (!string.IsNullOrWhiteSpace(configuredBaseUrl))
+        {
+            if (!Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var parsedBaseUri) ||
+                parsedBaseUri.Scheme is not ("http" or "https") ||
+                !string.IsNullOrEmpty(parsedBaseUri.UserInfo) ||
+                !string.IsNullOrEmpty(parsedBaseUri.Query) ||
+                !string.IsNullOrEmpty(parsedBaseUri.Fragment))
+                throw new InvalidOperationException("OmsPublic:BaseUrl harus berupa URL HTTP atau HTTPS yang valid.");
+            if (environment.IsProduction() && parsedBaseUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("OmsPublic:BaseUrl wajib menggunakan HTTPS di Production.");
+            baseUri = parsedBaseUri;
+        }
+        else
+        {
+            if (environment.IsProduction())
+                throw new InvalidOperationException(
+                    "Atur OmsPublic__BaseUrl dengan domain publik OMS agar tautan rundown di email benar.");
+            baseUri = new Uri($"{Request.Scheme}://{Request.Host}/", UriKind.Absolute);
+        }
+
+        var baseAddress = new Uri(baseUri.ToString().TrimEnd('/') + "/", UriKind.Absolute);
+        return new Uri(baseAddress, $"event/{Uri.EscapeDataString(eventId)}/schedule")
+            .ToString();
+    }
 }

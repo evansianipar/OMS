@@ -159,7 +159,7 @@
                 <div class="workspace-intro"><div><h2>Peserta & QR</h2><p>Cari dan kelola peserta untuk kegiatan terpilih</p></div>
                     @if (canManage)
                     {
-                        <div class="button-row"><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button></div>
+                        <div class="button-row"><button class="btn btn-outline-secondary" onclick="document.getElementById('employee-master-file').click()">Unggah master CSV</button><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button><input id="employee-master-file" type="file" accept=".csv,text/csv" class="d-none"></div>
                     }
                 </div>
                 @if (canManage)
@@ -179,28 +179,112 @@
                 @if (canManage)
                 {
                     <article class="panel mb-4" id="new-event-form">
-                        <div class="panel-heading"><div><h3>Buat kegiatan</h3><p>Data disimpan pada sheet Events</p></div></div>
-                        <div class="row g-3">
-                            <div class="col-md-4"><label class="form-label" for="new-event-code">Kode</label><input id="new-event-code" class="form-control" maxlength="40"></div>
-                            <div class="col-md-8"><label class="form-label" for="new-event-name">Nama kegiatan</label><input id="new-event-name" class="form-control" maxlength="120"></div>
-                            <div class="col-md-4"><label class="form-label" for="new-event-status">Status</label><select id="new-event-status" class="form-select"><option>Draft</option><option>Published</option><option>Ongoing</option></select></div>
-                            <div class="col-md-4"><label class="form-label" for="new-event-start">Tanggal mulai</label><input id="new-event-start" class="form-control" type="date"></div>
-                            <div class="col-md-4"><label class="form-label" for="new-event-end">Tanggal selesai</label><input id="new-event-end" class="form-control" type="date"></div>
-                            <div class="col-12"><label class="form-label" for="new-event-location">Lokasi</label><input id="new-event-location" class="form-control" maxlength="200"></div>
-                            <div class="col-12"><label class="form-label" for="new-event-description">Deskripsi</label><textarea id="new-event-description" class="form-control" rows="2" maxlength="1000"></textarea></div>
-                        </div>
-                        <button class="btn btn-primary mt-3" onclick="createEvent()">Simpan kegiatan</button>
+                        <div class="panel-heading"><div><h3 id="event-form-title">Buat kegiatan</h3><p>Data disimpan pada database OMS</p></div></div>
+                        <form id="create-event-form">
+                            <input id="editing-event-id" type="hidden">
+                            <div class="row g-3">
+                                <div class="col-md-4"><label class="form-label" for="new-event-code">Kode</label><input id="new-event-code" class="form-control" maxlength="40" required></div>
+                                <div class="col-md-8"><label class="form-label" for="new-event-name">Nama kegiatan</label><input id="new-event-name" class="form-control" maxlength="120" required></div>
+                                <div class="col-md-4"><label class="form-label" for="new-event-status">Status</label><select id="new-event-status" class="form-select"><option>Draft</option><option>Published</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option></select></div>
+                                <div class="col-md-4"><label class="form-label" for="new-event-start">Tanggal mulai</label><input id="new-event-start" class="form-control" type="date"></div>
+                                <div class="col-md-4"><label class="form-label" for="new-event-end">Tanggal selesai</label><input id="new-event-end" class="form-control" type="date"></div>
+                                <div class="col-12"><label class="form-label" for="new-event-location">Lokasi</label><input id="new-event-location" class="form-control" maxlength="200"></div>
+                                <div class="col-12"><label class="form-label" for="new-event-description">Deskripsi</label><textarea id="new-event-description" class="form-control" rows="2" maxlength="1000"></textarea></div>
+                            </div>
+                            <div id="create-event-status" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
+                            <div class="button-row mt-3">
+                                <button id="create-event-submit" class="btn btn-primary" type="submit">Simpan kegiatan</button>
+                                <button id="cancel-event-edit" class="btn btn-outline-secondary d-none" type="button">Batal edit</button>
+                            </div>
+                        </form>
                     </article>
                 }
                 <article class="panel mb-4">
                     <div class="panel-heading"><div><h3>Daftar kegiatan</h3><p>Pilih kegiatan aktif dari pemilih di bagian atas halaman</p></div></div>
-                    <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Kode</th><th>Nama kegiatan</th><th>Tanggal</th><th>Lokasi</th><th>Status</th></tr></thead><tbody>
+                    <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Kode</th><th>Nama kegiatan</th><th>Tanggal</th><th>Lokasi</th><th>Status</th>@if (canManage)
+                    {
+                        <th>Aksi</th>
+                    }</tr></thead><tbody>
                     @foreach (var item in Model.Events)
                     {
-                        <tr><td>@item.EventCode</td><td>@item.EventName</td><td>@item.StartDate</td><td>@item.Location</td><td><span class="badge text-bg-light">@item.Status</span></td></tr>
+                        <tr>
+                            <td>@item.EventCode</td><td>@item.EventName</td><td>@item.StartDate</td><td>@item.Location</td><td><span class="badge text-bg-light">@item.Status</span></td>
+                            @if (canManage)
+                            {
+                                <td><div class="d-flex flex-wrap gap-2">
+                                    <button class="btn btn-sm btn-outline-primary" type="button"
+                                            data-edit-event="@item.EventId"
+                                            data-code="@item.EventCode"
+                                            data-name="@item.EventName"
+                                            data-description="@item.Description"
+                                            data-start-date="@item.StartDate"
+                                            data-end-date="@item.EndDate"
+                                            data-location="@item.Location"
+                                            data-status="@item.Status">Edit</button>
+                                    <button class="btn btn-sm btn-outline-danger" type="button" data-delete-event="@item.EventId">Hapus</button>
+                                </div></td>
+                            }
+                        </tr>
                     }
                     </tbody></table></div>
                 </article>
+                @if (canManage && selectedEvent is not null)
+                {
+                    var agenda = Model.ScheduleItems ?? [];
+                    <article class="panel mb-4" id="schedule-management">
+                        <div class="panel-heading">
+                            <div><h3>Rundown kegiatan</h3><p>Atur agenda lintas hari. Waktu menggunakan WIB (Jakarta).</p></div>
+                            <a class="btn btn-outline-primary" href="/event/@selectedEvent.EventId/schedule" target="_blank" rel="noopener">Lihat halaman publik</a>
+                        </div>
+                        <form id="schedule-item-form" class="mb-4">
+                            <input id="schedule-session-id" type="hidden">
+                            <div class="row g-3">
+                                <div class="col-lg-6"><label class="form-label" for="schedule-name">Nama kegiatan</label><input id="schedule-name" class="form-control" maxlength="160" required placeholder="Contoh: Persiapan keberangkatan"></div>
+                                <div class="col-lg-3"><label class="form-label" for="schedule-start">Waktu mulai (WIB)</label><input id="schedule-start" class="form-control" type="datetime-local" required></div>
+                                <div class="col-lg-3"><label class="form-label" for="schedule-end">Waktu selesai (WIB)</label><input id="schedule-end" class="form-control" type="datetime-local" required></div>
+                                <div class="col-lg-5"><label class="form-label" for="schedule-location">Lokasi (opsional)</label><input id="schedule-location" class="form-control" maxlength="200"></div>
+                                <div class="col-lg-5"><label class="form-label" for="schedule-description">Keterangan (opsional)</label><input id="schedule-description" class="form-control" maxlength="1000"></div>
+                                <div class="col-lg-2"><label class="form-label" for="schedule-status">Status</label><select id="schedule-status" class="form-select"><option value="Active">Tampilkan</option><option value="Inactive">Sembunyikan</option></select></div>
+                            </div>
+                            <div id="schedule-form-status" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
+                            <div class="button-row mt-3">
+                                <button id="schedule-save" class="btn btn-primary" type="submit">Tambah agenda</button>
+                                <button id="schedule-cancel" class="btn btn-outline-secondary d-none" type="button">Batal edit</button>
+                            </div>
+                        </form>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead><tr><th>Waktu (WIB)</th><th>Agenda</th><th>Lokasi</th><th>Status</th><th>Aksi</th></tr></thead>
+                                <tbody>
+                                @foreach (var item in agenda)
+                                {
+                                    <tr>
+                                        <td class="text-nowrap">@item.StartTime.Replace("T", " ") – @item.EndTime.Replace("T", " ")</td>
+                                        <td><strong>@item.SessionName</strong>@if (!string.IsNullOrWhiteSpace(item.Description)) { <div class="small text-secondary">@item.Description</div> }</td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.Location) ? "—" : item.Location)</td>
+                                        <td><span class="badge @(item.Status == "Active" ? "text-bg-success" : "text-bg-secondary")">@(item.Status == "Active" ? "Ditampilkan" : "Disembunyikan")</span></td>
+                                        <td><div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-outline-primary" type="button"
+                                                    data-edit-schedule="@item.SessionId"
+                                                    data-name="@item.SessionName"
+                                                    data-description="@item.Description"
+                                                    data-start="@item.StartTime"
+                                                    data-end="@item.EndTime"
+                                                    data-location="@item.Location"
+                                                    data-status="@item.Status">Edit</button>
+                                            <button class="btn btn-sm btn-outline-danger" type="button" data-delete-schedule="@item.SessionId">Hapus</button>
+                                        </div></td>
+                                    </tr>
+                                }
+                                @if (agenda.Count == 0)
+                                {
+                                    <tr><td colspan="5" class="text-secondary">Belum ada rundown. Tambahkan agenda pertama di atas.</td></tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                }
                 @if (selectedEvent is not null)
                 {
                     <article class="panel">

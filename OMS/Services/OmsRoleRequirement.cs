@@ -16,20 +16,12 @@ public sealed class OmsRoleHandler(UserDirectoryService directory, IHttpContextA
         var httpContext = accessor.HttpContext;
         if (string.IsNullOrWhiteSpace(email) || httpContext is null) return;
 
-        try
-        {
-            var user = await directory.FindActiveUserAsync(email, httpContext.RequestAborted);
-            if (user is null) return;
+        var user = await directory.FindActiveUserAsync(email, httpContext.RequestAborted);
+        if (user is null) return;
 
-            var identity = context.User.Identity as System.Security.Claims.ClaimsIdentity;
-            if (identity is not null && !identity.HasClaim(System.Security.Claims.ClaimTypes.Role, user.Role))
-                identity.AddClaim(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, user.Role));
-            context.Succeed(requirement);
-        }
-        catch (Exception exception)
-        {
-            httpContext.RequestServices.GetRequiredService<ILogger<OmsRoleHandler>>()
-                .LogError(exception, "Failed to authorize OMS user from Google Sheets.");
-        }
+        var identity = context.User.Identity as System.Security.Claims.ClaimsIdentity;
+        if (identity is not null && !identity.HasClaim(System.Security.Claims.ClaimTypes.Role, user.Role))
+            identity.AddClaim(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, user.Role));
+        context.Succeed(requirement);
     }
 }

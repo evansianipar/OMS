@@ -26,16 +26,28 @@ public sealed class HomeController(OmsService oms) : Controller
             var dashboard = selectedEvent is null || currentPage != "dashboard"
                 ? null
                 : await oms.GetDashboardAsync(selectedEvent.EventId, cancellationToken);
-            return View(new HomeViewModel(events, dashboard, Page: currentPage));
+            var scheduleItems = selectedEvent is null || currentPage != "data"
+                ? []
+                : await oms.ListSessionsAsync(selectedEvent.EventId, cancellationToken);
+            return View(new HomeViewModel(events, dashboard, Page: currentPage, ScheduleItems: scheduleItems));
         }
         catch (Exception exception)
         {
             HttpContext.RequestServices.GetRequiredService<ILogger<HomeController>>()
                 .LogError(exception, "Unable to load OMS home page.");
             return View(new HomeViewModel([], null,
-                "Data OMS tidak dapat dimuat. Administrator perlu memeriksa konfigurasi akses Google Sheets",
+                "Data OMS tidak dapat dimuat. Administrator perlu memeriksa konfigurasi database JSON dan Vercel Blob.",
                 currentPage));
         }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/event/{eventId}/schedule")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public async Task<IActionResult> Schedule(string eventId, CancellationToken cancellationToken)
+    {
+        var schedule = await oms.GetPublicEventScheduleAsync(eventId, cancellationToken);
+        return schedule is null ? NotFound() : View("Schedule", schedule);
     }
 
     public IActionResult Privacy() => View();

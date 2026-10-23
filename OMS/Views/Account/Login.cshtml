@@ -1,10 +1,27 @@
+@model string?
 @{
     ViewData["Title"] = "Masuk";
 }
 <div class="auth-card">
-    <div class="brand-mark">O</div>
-    <p class="eyebrow mt-4">OUTING MANAGEMENT SYSTEM</p>
-    <h1>Kelola outing dengan lebih mudah</h1>
-    <p class="text-secondary">Masuk menggunakan akun Google Workspace @((string?)ViewData["GoogleDomain"] ?? "wom.co.id") yang telah terdaftar sebagai panitia</p>
-    <a class="btn btn-primary w-100 mt-3" href="/account/login">Masuk dengan Google Workspace</a>
+    <div class="auth-brand">
+        <img src="~/img/LogoWOMF.png" alt="WOM Finance" />
+        <h1>OMS</h1>
+    </div>
+    @if (ViewData["LoginError"] is string error)
+    {
+        <div class="alert alert-danger" role="alert">@error</div>
+    }
+    <form asp-controller="Account" asp-action="Login" method="post" class="mt-4">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="returnUrl" value="@Model" />
+        <div class="mb-3">
+            <label for="email" class="form-label">Email</label>
+            <input id="email" name="email" type="email" class="form-control" autocomplete="username" required />
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required />
+        </div>
+        <button class="btn btn-primary w-100" type="submit">Masuk</button>
+    </form>
 </div>

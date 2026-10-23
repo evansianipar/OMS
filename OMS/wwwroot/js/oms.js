@@ -362,13 +362,35 @@
             document.getElementById('participant-prev').disabled = pageData.page <= 1;
             document.getElementById('participant-next').disabled = pageData.page >= pageCount;
             document.getElementById('participant-table').innerHTML = pageData.items.map(participant =>
-                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.department || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${participant.isActive && canManage ? `<div class="d-flex flex-wrap gap-2"><button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button></div>` : '-'}</td></tr>`
+                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.department || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${canManage ? `<div class="d-flex flex-wrap gap-2">${participant.isActive ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button>` : ''}<button class="btn btn-sm btn-outline-danger" data-delete-participant="${escapeHtml(participant.participantId)}" data-participant-name="${escapeHtml(participant.fullName)}">Hapus</button></div>` : '-'}</td></tr>`
             ).join('') || '<tr><td colspan="5" class="text-secondary">Tidak ada peserta.</td></tr>';
             document.querySelectorAll('[data-qr-participant]').forEach(button =>
                 button.addEventListener('click', () => issueParticipantQr(button.dataset.qrParticipant)));
             document.querySelectorAll('[data-send-invitation]').forEach(button =>
                 button.addEventListener('click', () => sendIndividualInvitation(button)));
+            document.querySelectorAll('[data-delete-participant]').forEach(button =>
+                button.addEventListener('click', () => deleteParticipant(button)));
         } catch (error) { notify(error.message, 'error'); }
+    }
+
+    async function deleteParticipant(button) {
+        const participantId = button.dataset.deleteParticipant;
+        const participantName = button.dataset.participantName || 'peserta ini';
+        if (!confirm(`Hapus permanen ${participantName} dari kegiatan ini? Riwayat kehadiran, QR, dan log peserta terkait juga akan dihapus.`))
+            return;
+
+        button.disabled = true;
+        try {
+            await api(`/api/oms/participants/${encodeURIComponent(participantId)}?eventId=${encodeURIComponent(eventId())}`, {
+                method: 'DELETE'
+            });
+            state.participantPage = 1;
+            await loadParticipants();
+            notify('Peserta dan riwayat kehadirannya berhasil dihapus.');
+        } catch (error) {
+            button.disabled = false;
+            notify(error.message, 'error');
+        }
     }
 
     async function issueParticipantQr(participantId) {
@@ -399,7 +421,7 @@
 
     async function importMaster() {
         if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
-        if (!confirm('Impor karyawan baru dari sheet List All EMP LENGKAP? Nomor pegawai yang sudah terdaftar tidak akan diduplikasi')) return;
+        if (!confirm('Impor karyawan baru dari master CSV yang sudah diunggah? Nomor pegawai yang sudah terdaftar tidak akan diduplikasi')) return;
         try {
             const result = await api('/api/oms/participants/import-master', {
                 method: 'POST',
@@ -410,7 +432,62 @@
         } catch (error) { notify(error.message, 'error'); }
     }
 
+    function parseCsv(text) {
+        const rows = [];
+        let row = [];
+        let field = '';
+        let quoted = false;
+        for (let index = 0; index < text.length; index++) {
+            const character = text[index];
+            if (quoted) {
+                if (character === '"' && text[index + 1] === '"') {
+                    field += '"';
+                    index++;
+                } else if (character === '"') {
+                    quoted = false;
+                } else {
+                    field += character;
+                }
+            } else if (character === '"' && field.length === 0) {
+                quoted = true;
+            } else if (character === ',') {
+                row.push(field);
+                field = '';
+            } else if (character === '\n' || character === '\r') {
+                if (character === '\r' && text[index + 1] === '\n') index++;
+                row.push(field);
+                if (row.some(cell => cell.trim() !== '')) rows.push(row);
+                row = [];
+                field = '';
+            } else {
+                field += character;
+            }
+        }
+        row.push(field);
+        if (row.some(cell => cell.trim() !== '')) rows.push(row);
+        return rows;
+    }
+
+    async function uploadEmployeeMaster(file) {
+        try {
+            const rows = parseCsv(await file.text());
+            if (rows.length < 2) throw new Error('CSV harus berisi header dan minimal satu baris data.');
+            const headers = rows.shift().map((header, index) =>
+                index === 0 ? header.replace(/^\uFEFF/, '').trim() : header.trim());
+            const result = await api('/api/oms/employee-master', {
+                method: 'POST',
+                body: JSON.stringify({ headers, rows })
+            });
+            notify(`Master karyawan tersimpan dalam database JSON: ${result.imported} baris.`);
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            document.getElementById('employee-master-file').value = '';
+        }
+    }
+
     async function createEvent() {
+        const editingEventId = document.getElementById('editing-event-id').value;
         const request = {
             eventCode: document.getElementById('new-event-code').value,
             eventName: document.getElementById('new-event-name').value,
@@ -420,13 +497,140 @@
             location: document.getElementById('new-event-location').value,
             description: document.getElementById('new-event-description').value
         };
+        const button = document.getElementById('create-event-submit');
+        const status = document.getElementById('create-event-status');
+        button.disabled = true;
+        button.textContent = 'Menyimpan...';
+        status.className = 'alert alert-info mt-3 mb-0';
+        status.textContent = editingEventId ? 'Menyimpan perubahan kegiatan...' : 'Menyimpan kegiatan, tunggu sebentar...';
         try {
-            const result = await api('/api/oms/events', { method: 'POST', body: JSON.stringify(request) });
+            const result = await api(
+                editingEventId ? `/api/oms/events/${encodeURIComponent(editingEventId)}` : '/api/oms/events',
+                { method: editingEventId ? 'PUT' : 'POST', body: JSON.stringify(request) });
             const url = new URL(window.location.href);
             url.searchParams.set('eventId', result.eventId);
             url.searchParams.set('page', 'data');
             window.location.assign(url);
-        } catch (error) { notify(error.message, 'error'); }
+        } catch (error) {
+            status.className = 'alert alert-danger mt-3 mb-0';
+            status.textContent = error.message;
+            button.disabled = false;
+            button.textContent = 'Simpan kegiatan';
+        }
+    }
+
+    function startEventEdit(button) {
+        document.getElementById('editing-event-id').value = button.dataset.editEvent;
+        document.getElementById('new-event-code').value = button.dataset.code || '';
+        document.getElementById('new-event-name').value = button.dataset.name || '';
+        document.getElementById('new-event-description').value = button.dataset.description || '';
+        document.getElementById('new-event-start').value = (button.dataset.startDate || '').slice(0, 10);
+        document.getElementById('new-event-end').value = (button.dataset.endDate || '').slice(0, 10);
+        document.getElementById('new-event-location').value = button.dataset.location || '';
+        document.getElementById('new-event-status').value = button.dataset.status || 'Draft';
+        document.getElementById('event-form-title').textContent = 'Edit kegiatan';
+        document.getElementById('create-event-submit').textContent = 'Simpan perubahan';
+        document.getElementById('cancel-event-edit').classList.remove('d-none');
+        document.getElementById('create-event-status').className = 'alert d-none mt-3 mb-0';
+        document.getElementById('new-event-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('new-event-code').focus();
+    }
+
+    function cancelEventEdit() {
+        document.getElementById('create-event-form').reset();
+        document.getElementById('editing-event-id').value = '';
+        document.getElementById('event-form-title').textContent = 'Buat kegiatan';
+        document.getElementById('create-event-submit').textContent = 'Simpan kegiatan';
+        document.getElementById('cancel-event-edit').classList.add('d-none');
+        document.getElementById('create-event-status').className = 'alert d-none mt-3 mb-0';
+    }
+
+    async function deleteEvent(button) {
+        const eventRow = button.closest('tr');
+        const eventName = eventRow?.querySelector('td:nth-child(2)')?.textContent?.trim() || 'kegiatan ini';
+        if (!confirm(`Hapus permanen kegiatan "${eventName}" beserta semua peserta, sesi, data kehadiran, dan log terkait? Tindakan ini tidak dapat dibatalkan.`))
+            return;
+
+        button.disabled = true;
+        try {
+            await api(`/api/oms/events/${encodeURIComponent(button.dataset.deleteEvent)}`, {
+                method: 'DELETE'
+            });
+            window.location.assign('/?page=data');
+        } catch (error) {
+            button.disabled = false;
+            notify(error.message, 'error');
+        }
+    }
+
+    function editScheduleItem(button) {
+        document.getElementById('schedule-session-id').value = button.dataset.editSchedule;
+        document.getElementById('schedule-name').value = button.dataset.name || '';
+        document.getElementById('schedule-description').value = button.dataset.description || '';
+        document.getElementById('schedule-start').value = (button.dataset.start || '').slice(0, 16);
+        document.getElementById('schedule-end').value = (button.dataset.end || '').slice(0, 16);
+        document.getElementById('schedule-location').value = button.dataset.location || '';
+        document.getElementById('schedule-status').value = button.dataset.status || 'Active';
+        document.getElementById('schedule-save').textContent = 'Simpan perubahan';
+        document.getElementById('schedule-cancel').classList.remove('d-none');
+        document.getElementById('schedule-form-status').className = 'alert d-none mt-3 mb-0';
+        document.getElementById('schedule-management').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('schedule-name').focus();
+    }
+
+    function resetScheduleForm() {
+        document.getElementById('schedule-item-form').reset();
+        document.getElementById('schedule-session-id').value = '';
+        document.getElementById('schedule-save').textContent = 'Tambah agenda';
+        document.getElementById('schedule-cancel').classList.add('d-none');
+        document.getElementById('schedule-form-status').className = 'alert d-none mt-3 mb-0';
+    }
+
+    async function saveScheduleItem() {
+        const sessionId = document.getElementById('schedule-session-id').value;
+        const status = document.getElementById('schedule-form-status');
+        const button = document.getElementById('schedule-save');
+        const payload = {
+            sessionName: document.getElementById('schedule-name').value,
+            description: document.getElementById('schedule-description').value,
+            startTime: document.getElementById('schedule-start').value,
+            endTime: document.getElementById('schedule-end').value,
+            location: document.getElementById('schedule-location').value,
+            status: document.getElementById('schedule-status').value
+        };
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu.', 'warning');
+
+        button.disabled = true;
+        status.className = 'alert alert-info mt-3 mb-0';
+        status.textContent = 'Menyimpan agenda...';
+        try {
+            await api(
+                sessionId
+                    ? `/api/oms/events/${encodeURIComponent(eventId())}/schedule/${encodeURIComponent(sessionId)}`
+                    : `/api/oms/events/${encodeURIComponent(eventId())}/schedule`,
+                { method: sessionId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+            window.location.reload();
+        } catch (error) {
+            status.className = 'alert alert-danger mt-3 mb-0';
+            status.textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function deleteScheduleItem(button) {
+        if (!confirm('Hapus agenda ini dari rundown? Jika agenda sudah memiliki catatan kehadiran, agenda tidak dapat dihapus; gunakan status Sembunyikan.'))
+            return;
+        button.disabled = true;
+        try {
+            await api(
+                `/api/oms/events/${encodeURIComponent(eventId())}/schedule/${encodeURIComponent(button.dataset.deleteSchedule)}`,
+                { method: 'DELETE' });
+            window.location.reload();
+        } catch (error) {
+            button.disabled = false;
+            notify(error.message, 'error');
+        }
     }
 
     async function manualCheckIn(participantId) {
@@ -651,5 +855,27 @@
     window.stopScanner = stopScanner;
     window.scanImage = scanImage;
     window.importMaster = importMaster;
+    document.getElementById('create-event-form')?.addEventListener('submit', event => {
+        event.preventDefault();
+        createEvent();
+    });
+    document.getElementById('cancel-event-edit')?.addEventListener('click', cancelEventEdit);
+    document.querySelectorAll('[data-edit-event]').forEach(button =>
+        button.addEventListener('click', () => startEventEdit(button)));
+    document.querySelectorAll('[data-delete-event]').forEach(button =>
+        button.addEventListener('click', () => deleteEvent(button)));
+    document.getElementById('schedule-item-form')?.addEventListener('submit', event => {
+        event.preventDefault();
+        saveScheduleItem();
+    });
+    document.getElementById('schedule-cancel')?.addEventListener('click', resetScheduleForm);
+    document.querySelectorAll('[data-edit-schedule]').forEach(button =>
+        button.addEventListener('click', () => editScheduleItem(button)));
+    document.querySelectorAll('[data-delete-schedule]').forEach(button =>
+        button.addEventListener('click', () => deleteScheduleItem(button)));
+    document.getElementById('employee-master-file')?.addEventListener('change', event => {
+        const file = event.target.files?.[0];
+        if (file) uploadEmployeeMaster(file);
+    });
     window.sendInvitations = sendInvitations;
 })();

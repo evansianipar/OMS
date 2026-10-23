@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+publish/
+.vs/
+.vscode/
+*.user
+*.suo
+*.pfx
+appsettings.Development.json

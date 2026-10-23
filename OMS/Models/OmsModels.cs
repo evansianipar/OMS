@@ -28,7 +28,20 @@ public sealed record HomeViewModel(
     IReadOnlyList<OmsEvent> Events,
     DashboardSummary? Dashboard,
     string? ErrorMessage = null,
-    string Page = "dashboard");
+    string Page = "dashboard",
+    IReadOnlyList<OmsSession>? ScheduleItems = null);
+
+public sealed record EventScheduleViewModel(
+    OmsEvent Event,
+    IReadOnlyList<PublicScheduleItem> Items,
+    DateTimeOffset CurrentTimeWib);
+
+public sealed record PublicQrRequest(string Token);
+
+public sealed record PublicParticipantQr(
+    string FullName,
+    string EmployeeNumber,
+    string QrPngBase64);
 
 public sealed record ParticipantPage(
     int Total,
@@ -77,11 +90,45 @@ public sealed record EventCreateRequest(
 
 public sealed record ImportRequest(string EventId);
 
+public sealed record EmployeeMasterImportRequest(
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<IReadOnlyList<string>> Rows);
+
+public sealed record EventDeletionSummary(
+    int Participants,
+    int Sessions,
+    int AttendanceRecords,
+    int AuditRecords);
+
+public sealed record ScheduleItemRequest(
+    string SessionName,
+    string? Description,
+    string StartTime,
+    string EndTime,
+    string? Location,
+    string? Status);
+
 public sealed record IssueQrRequest(string EventId, string ParticipantId);
 
 public sealed record QrIssueResponse(string Token, string EmployeeNumber, string FullName);
 
-public sealed record OmsSession(string SessionId, string SessionName, string Status);
+public sealed record OmsSession(
+    string SessionId,
+    string SessionName,
+    string Description,
+    string StartTime,
+    string EndTime,
+    string Location,
+    string SessionType,
+    string Status);
+
+public sealed record PublicScheduleItem(
+    string SessionId,
+    string SessionName,
+    string Description,
+    DateTimeOffset StartTime,
+    DateTimeOffset EndTime,
+    string Location);
 
 public sealed record DashboardSummary(
     OmsEvent Event,

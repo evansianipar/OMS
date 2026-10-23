@@ -1,40 +1,55 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.DataProtection.Repositories;
 using OMS.Configuration;
 using OMS.Services;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.Configure<GoogleWorkspaceOptions>(builder.Configuration.GetSection("GoogleWorkspace"));
+builder.Services.Configure<OmsAuthOptions>(builder.Configuration.GetSection("OmsAuth"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.AddDataProtection().SetApplicationName("OMS");
+builder.Services.AddSingleton<IXmlRepository, OmsDataProtectionXmlRepository>();
+builder.Services.AddOptions<KeyManagementOptions>()
+    .Configure<IXmlRepository>((options, repository) => options.XmlRepository = repository);
 builder.Services.AddControllersWithViews();
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
-builder.Services.AddSingleton<GoogleSheetsCredentialStore>();
-builder.Services.AddSingleton<GoogleSheetsService>();
-builder.Services.AddSingleton<AppsScriptInvitationService>();
-builder.Services.AddSingleton<OmsService>();
+builder.Services.AddSingleton<VercelBlobStorage>();
+builder.Services.AddSingleton<OmsJsonDatabase>();
+builder.Services.AddSingleton<GmailSmtpInvitationService>();
 builder.Services.AddSingleton<UserDirectoryService>();
+builder.Services.AddSingleton<OmsService>();
 builder.Services.AddScoped<IAuthorizationHandler, OmsRoleHandler>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("OmsUser", policy => policy.Requirements.Add(new OmsRoleRequirement()));
 });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
-var workspace = builder.Configuration.GetSection("GoogleWorkspace").Get<GoogleWorkspaceOptions>() ?? new();
-var auth = builder.Configuration.GetSection("Authentication:Google");
 builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    })
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.Cookie.Name = "__Host-OMS.Session";
@@ -65,152 +80,60 @@ builder.Services
             context.Response.Redirect(context.RedirectUri);
             return Task.CompletedTask;
         };
-    })
-    .AddCookie("GoogleSheetsSetup", options =>
-    {
-        options.Cookie.Name = "__Host-OMS.SheetsSetup";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
-    })
-    .AddOpenIdConnect(options =>
-    {
-        options.Authority = "https://accounts.google.com";
-        options.ClientId = string.IsNullOrWhiteSpace(auth["ClientId"])
-            ? "oauth-not-configured"
-            : auth["ClientId"]!;
-        options.ClientSecret = auth["ClientSecret"] ?? string.Empty;
-        options.CallbackPath = "/signin-google";
-        options.ResponseType = OpenIdConnectResponseType.Code;
-        options.MapInboundClaims = false;
-        options.SaveTokens = false;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.Scope.Clear();
-        options.Scope.Add("openid");
-        options.Scope.Add("email");
-        options.Scope.Add("profile");
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            NameClaimType = "name",
-            RoleClaimType = ClaimTypes.Role,
-            ValidateIssuer = true
-        };
-        options.Events = new OpenIdConnectEvents
-        {
-            OnRedirectToIdentityProvider = context =>
-            {
-                context.ProtocolMessage.SetParameter("hd", workspace.Domain);
-                return Task.CompletedTask;
-            },
-            OnTokenValidated = async context =>
-            {
-                var email = context.Principal?.FindFirst("email")?.Value?.Trim().ToLowerInvariant();
-                var hostedDomain = context.Principal?.FindFirst("hd")?.Value?.Trim().ToLowerInvariant();
-                var verified = context.Principal?.FindFirst("email_verified")?.Value;
-                if (string.IsNullOrWhiteSpace(email) ||
-                    !string.Equals(verified, "true", StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(hostedDomain, workspace.Domain, StringComparison.OrdinalIgnoreCase) ||
-                    !email.EndsWith("@" + workspace.Domain, StringComparison.OrdinalIgnoreCase))
-                {
-                    context.Fail("Gunakan akun Google Workspace organisasi yang telah diverifikasi.");
-                    return;
-                }
-
-                var directory = context.HttpContext.RequestServices.GetRequiredService<UserDirectoryService>();
-                var authorizedUser = await directory.FindActiveUserAsync(email, context.HttpContext.RequestAborted);
-                if (authorizedUser is null)
-                {
-                    context.Fail("Akun Google Anda belum terdaftar sebagai panitia aktif pada sheet Users.");
-                    return;
-                }
-
-                var identity = (ClaimsIdentity)context.Principal!.Identity!;
-                identity.AddClaim(new Claim(ClaimTypes.Role, authorizedUser.Role));
-                identity.AddClaim(new Claim("oms:full_name", authorizedUser.FullName));
-            },
-            OnRemoteFailure = context =>
-            {
-                context.HandleResponse();
-                context.Response.Redirect("/account/denied");
-                return Task.CompletedTask;
-            }
-        };
-    })
-    .AddOpenIdConnect("GoogleSheets", options =>
-    {
-        options.Authority = "https://accounts.google.com";
-        options.ClientId = string.IsNullOrWhiteSpace(auth["ClientId"])
-            ? "oauth-not-configured"
-            : auth["ClientId"]!;
-        options.ClientSecret = auth["ClientSecret"] ?? string.Empty;
-        options.CallbackPath = "/signin-google-sheets";
-        options.SignInScheme = "GoogleSheetsSetup";
-        options.ResponseType = OpenIdConnectResponseType.Code;
-        options.MapInboundClaims = false;
-        options.SaveTokens = true;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.Scope.Clear();
-        options.Scope.Add("openid");
-        options.Scope.Add("email");
-        options.Scope.Add("https://www.googleapis.com/auth/spreadsheets");
-        options.Scope.Add("https://www.googleapis.com/auth/script.send_mail");
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            NameClaimType = "name",
-            ValidateIssuer = true
-        };
-        options.Events = new OpenIdConnectEvents
-        {
-            OnRedirectToIdentityProvider = context =>
-            {
-                context.ProtocolMessage.SetParameter("hd", workspace.Domain);
-                context.ProtocolMessage.SetParameter("access_type", "offline");
-                context.ProtocolMessage.SetParameter("prompt", "consent");
-                context.ProtocolMessage.SetParameter("include_granted_scopes", "true");
-                return Task.CompletedTask;
-            },
-            OnTokenValidated = context =>
-            {
-                var email = context.Principal?.FindFirst("email")?.Value?.Trim();
-                var hostedDomain = context.Principal?.FindFirst("hd")?.Value?.Trim();
-                var verified = context.Principal?.FindFirst("email_verified")?.Value;
-                if (string.IsNullOrWhiteSpace(email) ||
-                    !email.Equals(workspace.SheetsUser, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(verified, "true", StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(hostedDomain, workspace.Domain, StringComparison.OrdinalIgnoreCase))
-                    context.Fail($"Hubungkan menggunakan akun pemilik spreadsheet {workspace.SheetsUser}.");
-
-                return Task.CompletedTask;
-            },
-            OnTicketReceived = async context =>
-            {
-                var refreshToken = context.Properties?.GetTokenValue("refresh_token");
-                if (string.IsNullOrWhiteSpace(refreshToken))
-                {
-                    context.HandleResponse();
-                    context.Response.Redirect("/account/sheets-connect-failed?reason=missing-refresh-token");
-                    return;
-                }
-
-                var store = context.HttpContext.RequestServices.GetRequiredService<GoogleSheetsCredentialStore>();
-                await store.SaveAsync(refreshToken, context.HttpContext.RequestAborted);
-                context.HandleResponse();
-                context.Response.Redirect("/account/sheets-connected");
-            },
-            OnRemoteFailure = context =>
-            {
-                context.HandleResponse();
-                context.Response.Redirect("/account/sheets-connect-failed");
-                return Task.CompletedTask;
-            }
-        };
     });
+
+var port = Environment.GetEnvironmentVariable("PORT");
+if (int.TryParse(port, out var vercelPort) && vercelPort is > 0 and <= 65535)
+    builder.WebHost.UseUrls($"http://0.0.0.0:{vercelPort}");
 
 var app = builder.Build();
 
+if (args.Length > 0 && args[0].Equals("--reset-superadmin-password", StringComparison.OrdinalIgnoreCase))
+{
+    if (args.Length != 2)
+    {
+        Console.Error.WriteLine(
+            "Penggunaan: dotnet run -- --reset-superadmin-password <email-superadmin>");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    var password = ReadHiddenPassword("Password baru (12–128 karakter): ");
+    var confirmation = ReadHiddenPassword("Ulangi password baru: ");
+    if (password.Length is < 12 or > 128)
+    {
+        Console.Error.WriteLine("Password harus 12–128 karakter.");
+        Environment.ExitCode = 2;
+        return;
+    }
+    if (!password.Equals(confirmation, StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("Konfirmasi password tidak cocok.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    using var scope = app.Services.CreateScope();
+    var database = scope.ServiceProvider.GetRequiredService<OmsJsonDatabase>();
+    var backupPath = await database.ResetSuperadminPasswordAsync(
+        args[1], password, CancellationToken.None);
+    Console.WriteLine("Password SUPERADMIN lokal berhasil diperbarui.");
+    if (!string.IsNullOrWhiteSpace(backupPath))
+        Console.WriteLine($"Cadangan database: {backupPath}");
+    return;
+}
+
 if (!app.Environment.IsDevelopment())
 {
+    var forwardedHeaders = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                           ForwardedHeaders.XForwardedProto |
+                           ForwardedHeaders.XForwardedHost
+    };
+    forwardedHeaders.KnownIPNetworks.Clear();
+    forwardedHeaders.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwardedHeaders);
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
@@ -218,6 +141,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 app.Use(async (context, next) =>
 {
     try
@@ -243,18 +167,6 @@ app.Use(async (context, next) =>
             await context.Response.WriteAsJsonAsync(new { detail = exception.Message });
         }
     }
-    catch (Google.GoogleApiException exception)
-    {
-        app.Logger.LogError(exception, "Google Sheets API request failed.");
-        if (!context.Response.HasStarted)
-        {
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            if (context.Request.Path.StartsWithSegments("/api"))
-                await context.Response.WriteAsJsonAsync(new { detail = "Layanan Google Sheets tidak tersedia. Periksa konfigurasi dan izin server." });
-            else
-                context.Response.Redirect("/Home/Index?serviceError=google-sheets");
-        }
-    }
 });
 app.UseAuthentication();
 app.UseAuthorization();
@@ -264,3 +176,27 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+static string ReadHiddenPassword(string prompt)
+{
+    Console.Write(prompt);
+    var characters = new List<char>();
+    while (true)
+    {
+        var key = Console.ReadKey(intercept: true);
+        if (key.Key == ConsoleKey.Enter)
+        {
+            Console.WriteLine();
+            return new string(characters.ToArray());
+        }
+        if (key.Key == ConsoleKey.Backspace)
+        {
+            if (characters.Count > 0) characters.RemoveAt(characters.Count - 1);
+            continue;
+        }
+        if (!char.IsControl(key.KeyChar))
+            characters.Add(key.KeyChar);
+    }
+}
+
+public partial class Program;

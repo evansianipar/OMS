@@ -1,4 +1,3 @@
-using Google.Apis.Sheets.v4.Data;
 using Microsoft.Extensions.Options;
 using OMS.Models;
 using System.Globalization;
@@ -8,9 +7,9 @@ using System.Text;
 namespace OMS.Services;
 
 public sealed class OmsService(
-    GoogleSheetsService sheets,
+    OmsJsonDatabase sheets,
     UserDirectoryService users,
-    AppsScriptInvitationService invitations,
+    GmailSmtpInvitationService invitations,
     ILogger<OmsService> logger)
 {
     private static readonly SemaphoreSlim AttendanceLock = new(1, 1);
@@ -26,7 +25,7 @@ public sealed class OmsService(
         CancellationToken cancellationToken)
     {
         var user = await users.FindActiveUserAsync(email, cancellationToken);
-        if (user is null) throw new UnauthorizedAccessException("Akun tidak aktif atau tidak terdaftar pada sheet Users.");
+        if (user is null) throw new UnauthorizedAccessException("Akun tidak aktif atau tidak terdaftar pada database OMS.");
         if (!allowedRoles.Contains(user.Role, StringComparer.OrdinalIgnoreCase))
             throw new UnauthorizedAccessException("Role akun tidak memiliki akses ke fungsi ini.");
         return user;
@@ -120,6 +119,80 @@ public sealed class OmsService(
         return id;
     }
 
+    public async Task UpdateEventAsync(
+        string eventId,
+        EventCreateRequest request,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        var code = RequiredText(request.EventCode, 40, "Kode kegiatan wajib diisi.");
+        var name = RequiredText(request.EventName, 120, "Nama kegiatan wajib diisi.");
+        var status = string.IsNullOrWhiteSpace(request.Status) ? "Draft" : request.Status.Trim();
+        if (!new[] { "Draft", "Published", "Ongoing", "Completed", "Cancelled" }
+            .Contains(status, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Status kegiatan tidak valid.");
+        if (!string.IsNullOrWhiteSpace(request.StartDate) &&
+            !string.IsNullOrWhiteSpace(request.EndDate) &&
+            DateOnly.TryParse(request.StartDate, out var startDate) &&
+            DateOnly.TryParse(request.EndDate, out var endDate) &&
+            endDate < startDate)
+            throw new InvalidOperationException("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+
+        var normalizedRequest = request with
+        {
+            EventCode = code,
+            EventName = name,
+            Description = SafeText(request.Description, 1000),
+            Location = SafeText(request.Location, 200),
+            Status = status
+        };
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            await sheets.UpdateEventAsync(eventId, normalizedRequest, cancellationToken);
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+        await AuditAsync(eventId, actorEmail, "UPDATE", "Event", eventId,
+            "Kegiatan diperbarui.", cancellationToken);
+    }
+
+    public async Task<EventDeletionSummary> DeleteEventAsync(
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            await GetEventAsync(eventId, cancellationToken);
+            return await sheets.DeleteEventCascadeAsync(eventId, cancellationToken);
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+    }
+
+    public async Task DeleteParticipantAsync(
+        string eventId,
+        string participantId,
+        CancellationToken cancellationToken)
+    {
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            await GetEventAsync(eventId, cancellationToken);
+            await sheets.DeleteParticipantAsync(eventId, participantId, cancellationToken);
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+    }
+
     public async Task<ImportSummary> ImportEmployeeMasterAsync(
         string eventId,
         string actorEmail,
@@ -138,7 +211,7 @@ public sealed class OmsService(
             var phoneIndex = FindHeader(headers, "PHONENUMBER", "PHONE", "NOMORHP");
             var emailIndex = FindHeader(headers, "EMAIL", "EMAILADDRESS");
             if (employeeIndex < 0 || nameIndex < 0)
-                throw new InvalidOperationException("Kolom wajib NIK dan EMPLOYEE_NAME tidak ditemukan pada sheet master.");
+                throw new InvalidOperationException("Kolom wajib NIK dan EMPLOYEE_NAME tidak ditemukan pada master karyawan JSON.");
 
             var participantsRows = await sheets.ReadAsync("'Participants'!A1:K", cancellationToken);
             var existing = ToRecords(participantsRows)
@@ -233,7 +306,7 @@ public sealed class OmsService(
             var employeeColumn = headers.IndexOf("EmployeeNumber");
             var nameColumn = headers.IndexOf("FullName");
             if (new[] { idColumn, eventColumn, activeColumn, hashColumn, updatedColumn }.Any(index => index < 0))
-                throw new InvalidOperationException("Header sheet Participants tidak sesuai dengan konfigurasi OMS.");
+                throw new InvalidOperationException("Struktur peserta pada database JSON tidak sesuai dengan konfigurasi OMS.");
 
             for (var index = 1; index < rows.Count; index++)
             {
@@ -246,12 +319,12 @@ public sealed class OmsService(
                 var now = DateTimeOffset.UtcNow.ToString("O");
                 await sheets.UpdateManyAsync(
                 [
-                    new Google.Apis.Sheets.v4.Data.ValueRange
+                    new JsonValueRange
                     {
                         Range = $"'Participants'!H{sheetRow}:H{sheetRow}",
                         Values = new List<IList<object>> { new List<object> { HashToken(token) } }
                     },
-                    new Google.Apis.Sheets.v4.Data.ValueRange
+                    new JsonValueRange
                     {
                         Range = $"'Participants'!K{sheetRow}:K{sheetRow}",
                         Values = new List<IList<object>> { new List<object> { now } }
@@ -344,6 +417,7 @@ public sealed class OmsService(
     public async Task<InvitationBatchResult> SendInvitationBatchAsync(
         string eventId,
         string actorEmail,
+        string scheduleUrl,
         int offset,
         int batchSize,
         CancellationToken cancellationToken)
@@ -372,7 +446,7 @@ public sealed class OmsService(
             try
             {
                 await SendInvitationToParticipantAsync(
-                    eventId, participant, actorEmail, invitationInfoByEmployee, cancellationToken);
+                    eventId, participant, actorEmail, invitationInfoByEmployee, scheduleUrl, cancellationToken);
                 sent++;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -400,6 +474,7 @@ public sealed class OmsService(
         string eventId,
         string participantId,
         string actorEmail,
+        string scheduleUrl,
         CancellationToken cancellationToken)
     {
         await GetEventAsync(eventId, cancellationToken);
@@ -414,7 +489,7 @@ public sealed class OmsService(
 
         var invitationInfoByEmployee = await GetEmployeeInvitationInfoAsync(cancellationToken);
         await SendInvitationToParticipantAsync(
-            eventId, participant, actorEmail, invitationInfoByEmployee, cancellationToken);
+            eventId, participant, actorEmail, invitationInfoByEmployee, scheduleUrl, cancellationToken);
         return new InvitationBatchResult(1, 0, 0, 1, 1, []);
     }
 
@@ -423,20 +498,23 @@ public sealed class OmsService(
         OmsParticipant participant,
         string actorEmail,
         IReadOnlyDictionary<string, EmployeeInvitationInfo> invitationInfoByEmployee,
+        string scheduleUrl,
         CancellationToken cancellationToken)
     {
         if (!invitationInfoByEmployee.TryGetValue(participant.EmployeeNumber.Trim(), out var invitationInfo))
             throw new InvalidOperationException(
-                $"Data NIK {participant.EmployeeNumber} tidak ditemukan pada sheet 'List All EMP LENGKAP'");
+                $"Data NIK {participant.EmployeeNumber} tidak ditemukan pada master karyawan JSON. Unggah CSV master karyawan terlebih dahulu.");
 
         var qr = await IssueQrAsync(eventId, participant.ParticipantId, actorEmail, cancellationToken);
+        var outing = await GetEventAsync(eventId, cancellationToken);
         await invitations.SendAsync(
-            eventId,
+            outing,
             participant with { Email = participant.Email.Trim() },
             qr.Token,
             invitationInfo.Camp,
             invitationInfo.Transport,
             invitationInfo.Vehicle,
+            $"{scheduleUrl}#participantQr={Uri.EscapeDataString(qr.Token)}",
             cancellationToken);
         await AuditAsync(eventId, actorEmail, "SEND_INVITATION", "Participant", participant.ParticipantId,
             "Undangan QR dikirim.", cancellationToken);
@@ -456,7 +534,7 @@ public sealed class OmsService(
         var vehicleIndex = FindHeader(headers, "MOBIL", "NOMOBIL");
         if (employeeIndex < 0 || campIndex < 0 || transportIndex < 0 || vehicleIndex < 0)
             throw new InvalidOperationException(
-                "Kolom NIK, CAMP, TRANSPORT, dan MOBIL harus tersedia pada sheet 'List All EMP LENGKAP' untuk mengirim undangan");
+                "Kolom NIK, CAMP, TRANSPORT, dan MOBIL harus tersedia pada master karyawan JSON untuk mengirim undangan");
 
         var invitationInfoByEmployee = new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in master.Skip(1))
@@ -484,8 +562,111 @@ public sealed class OmsService(
         var rows = await sheets.ReadAsync("'Sessions'!A1:Z", cancellationToken);
         return ToRecords(rows)
             .Where(row => Get(row, "EventId") == eventId)
-            .Select(row => new OmsSession(Get(row, "SessionId"), Get(row, "SessionName"), Get(row, "Status")))
+            .Select(row => new OmsSession(
+                Get(row, "SessionId"),
+                Get(row, "SessionName"),
+                Get(row, "Description"),
+                Get(row, "StartTime"),
+                Get(row, "EndTime"),
+                Get(row, "Location"),
+                Get(row, "SessionType"),
+                Get(row, "Status")))
+            .OrderBy(item => item.StartTime, StringComparer.Ordinal)
             .ToList();
+    }
+
+    public async Task<string> CreateScheduleItemAsync(
+        string eventId,
+        ScheduleItemRequest request,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        var validated = ValidateScheduleRequest(request);
+        var sessionId = await sheets.CreateScheduleItemAsync(eventId, validated, cancellationToken);
+        await AuditAsync(eventId, actorEmail, "CREATE", "ScheduleItem", sessionId,
+            "Agenda kegiatan dibuat.", cancellationToken);
+        return sessionId;
+    }
+
+    public async Task UpdateScheduleItemAsync(
+        string eventId,
+        string sessionId,
+        ScheduleItemRequest request,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        var validated = ValidateScheduleRequest(request);
+        await sheets.UpdateScheduleItemAsync(eventId, sessionId, validated, cancellationToken);
+        await AuditAsync(eventId, actorEmail, "UPDATE", "ScheduleItem", sessionId,
+            "Agenda kegiatan diperbarui.", cancellationToken);
+    }
+
+    public async Task DeleteScheduleItemAsync(
+        string eventId,
+        string sessionId,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        await sheets.DeleteScheduleItemAsync(eventId, sessionId, cancellationToken);
+        await AuditAsync(eventId, actorEmail, "DELETE", "ScheduleItem", sessionId,
+            "Agenda kegiatan dihapus.", cancellationToken);
+    }
+
+    public async Task<EventScheduleViewModel?> GetPublicEventScheduleAsync(
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        var @event = (await ListEventsAsync(cancellationToken))
+            .FirstOrDefault(item => item.EventId == eventId);
+        if (@event is null) return null;
+        var rows = await sheets.ReadAsync("'Sessions'!A1:Z", cancellationToken);
+        var sessions = ToRecords(rows)
+            .Where(row => Get(row, "EventId") == eventId)
+            .Select(row => new OmsSession(
+                Get(row, "SessionId"),
+                Get(row, "SessionName"),
+                Get(row, "Description"),
+                Get(row, "StartTime"),
+                Get(row, "EndTime"),
+                Get(row, "Location"),
+                Get(row, "SessionType"),
+                Get(row, "Status")))
+            .ToList();
+        var items = sessions
+            .Where(item => item.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(item.StartTime) &&
+                !string.IsNullOrWhiteSpace(item.EndTime))
+            .Select(item => new PublicScheduleItem(
+                item.SessionId,
+                item.SessionName,
+                item.Description,
+                ToWibDateTime(item.StartTime),
+                ToWibDateTime(item.EndTime),
+                item.Location))
+            .OrderBy(item => item.StartTime)
+            .ToList();
+        return new EventScheduleViewModel(
+            @event,
+            items,
+            DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)));
+    }
+
+    public async Task<OmsParticipant?> FindPublicParticipantByQrAsync(
+        string eventId,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 200)
+            return null;
+
+        var hash = HashToken(token);
+        return (await GetParticipantsAsync(eventId, cancellationToken))
+            .FirstOrDefault(participant =>
+                participant.IsActive &&
+                participant.TokenHash.Equals(hash, StringComparison.Ordinal));
     }
 
     public async Task<ScanResponse> CheckInQrAsync(
@@ -609,17 +790,17 @@ public sealed class OmsService(
             var sheetRow = rowIndex + 1;
             await sheets.UpdateManyAsync(
             [
-                new ValueRange
+                new JsonValueRange
                 {
                     Range = AttendanceCellRange(checkOutColumn, sheetRow),
                     Values = new List<IList<object>> { new List<object> { checkOutTime } }
                 },
-                new ValueRange
+                new JsonValueRange
                 {
                     Range = AttendanceCellRange(checkOutMethodColumn, sheetRow),
                     Values = new List<IList<object>> { new List<object> { method } }
                 },
-                new ValueRange
+                new JsonValueRange
                 {
                     Range = AttendanceCellRange(checkedOutByColumn, sheetRow),
                     Values = new List<IList<object>> { new List<object> { checkedBy } }
@@ -713,14 +894,14 @@ public sealed class OmsService(
     {
         var rows = await sheets.ReadAsync("'Attendance'!A1:AZ", cancellationToken);
         if (rows.Count == 0)
-            throw new InvalidOperationException("Header sheet Attendance belum tersedia");
+            throw new InvalidOperationException("Struktur tabel Attendance pada database JSON belum tersedia.");
 
         var headers = GetAttendanceHeaders(rows);
         foreach (var requiredHeader in AttendanceBaseHeaders)
         {
             if (headers.FindIndex(header => NormalizeHeader(header) == NormalizeHeader(requiredHeader)) < 0)
                 throw new InvalidOperationException(
-                    $"Kolom {requiredHeader} tidak ditemukan pada sheet Attendance");
+                    $"Kolom {requiredHeader} tidak ditemukan pada tabel Attendance JSON.");
         }
 
         var missingHeaders = AttendanceCheckoutHeaders
@@ -731,7 +912,7 @@ public sealed class OmsService(
 
         var lastHeaderIndex = headers.FindLastIndex(header => !string.IsNullOrWhiteSpace(header));
         if (lastHeaderIndex + missingHeaders.Count >= 52)
-            throw new InvalidOperationException("Tidak ada kolom kosong untuk menambahkan data check-out pada sheet Attendance");
+            throw new InvalidOperationException("Tidak ada kolom kosong untuk menambahkan data check-out pada tabel Attendance JSON.");
 
         var firstNewColumn = lastHeaderIndex + 1;
         var lastNewColumn = firstNewColumn + missingHeaders.Count - 1;
@@ -756,7 +937,7 @@ public sealed class OmsService(
         var index = headers.ToList().FindIndex(header => NormalizeHeader(header) == NormalizeHeader(name));
         return index >= 0
             ? index
-            : throw new InvalidOperationException($"Kolom {name} tidak ditemukan pada sheet Attendance");
+            : throw new InvalidOperationException($"Kolom {name} tidak ditemukan pada tabel Attendance JSON.");
     }
 
     private static List<int> FindAttendanceRows(
@@ -875,6 +1056,48 @@ public sealed class OmsService(
     {
         var text = SafeText(value, maxLength);
         return string.IsNullOrWhiteSpace(text) ? throw new InvalidOperationException(error) : text;
+    }
+
+    private static ScheduleItemRequest ValidateScheduleRequest(ScheduleItemRequest request)
+    {
+        var name = RequiredText(request.SessionName, 160, "Nama agenda wajib diisi.");
+        var description = SafeText(request.Description, 1000);
+        var location = SafeText(request.Location, 200);
+        var status = string.IsNullOrWhiteSpace(request.Status) ? "Active" : request.Status.Trim();
+        if (status is not ("Active" or "Inactive"))
+            throw new InvalidOperationException("Status agenda harus Active atau Inactive.");
+        if (!TryParseScheduleTime(request.StartTime, out var start) ||
+            !TryParseScheduleTime(request.EndTime, out var end))
+            throw new InvalidOperationException("Waktu agenda harus diisi dengan tanggal dan jam yang valid.");
+        if (end <= start)
+            throw new InvalidOperationException("Waktu selesai agenda harus setelah waktu mulai.");
+
+        return request with
+        {
+            SessionName = name,
+            Description = description,
+            Location = location,
+            StartTime = start.ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture),
+            EndTime = end.ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture),
+            Status = status
+        };
+    }
+
+    private static bool TryParseScheduleTime(string? value, out DateTime parsed)
+    {
+        return DateTime.TryParseExact(
+            value,
+            ["yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out parsed);
+    }
+
+    private static DateTimeOffset ToWibDateTime(string value)
+    {
+        if (!TryParseScheduleTime(value, out var parsed))
+            throw new InvalidOperationException("Waktu agenda pada database tidak valid.");
+        return new DateTimeOffset(DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified), TimeSpan.FromHours(7));
     }
 
     private static string SafeText(string? value, int maxLength)

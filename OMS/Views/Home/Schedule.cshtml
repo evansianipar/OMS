@@ -1,0 +1,143 @@
+@model OMS.Models.EventScheduleViewModel
+@{
+    Layout = null;
+    ViewData["Title"] = $"Rundown {Model.Event.EventName}";
+    var currentItem = Model.Items.FirstOrDefault(item =>
+        item.StartTime <= Model.CurrentTimeWib && item.EndTime > Model.CurrentTimeWib);
+    var nextItem = Model.Items.FirstOrDefault(item => item.StartTime > Model.CurrentTimeWib);
+}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101b36">
+    <title>@ViewData["Title"] - OMS</title>
+    <link rel="stylesheet" href="~/css/event-schedule.css" asp-append-version="true">
+</head>
+<body>
+    <main class="schedule-page" data-event-id="@Model.Event.EventId">
+        <header class="schedule-header">
+            <a class="schedule-brand" href="/" aria-label="Outing Management System">
+                <img class="schedule-logo" src="~/img/LogoWOMF.png" alt="WOM Finance">
+                <span><strong>OMS</strong><small>OUTING MANAGEMENT SYSTEM</small></span>
+            </a>
+            <div class="live-clock"><span class="clock-dot"></span><span id="wib-clock">Memuat waktu WIB</span><span>JAKARTA</span></div>
+        </header>
+
+        <section class="event-hero">
+            <div class="hero-glow"></div>
+            <div class="hero-content">
+                <span class="eyebrow">RUNDOWN KEGIATAN</span>
+                <h1>@Model.Event.EventName</h1>
+                <div class="event-meta">
+                    <span>◷ @Model.Event.StartDate@(string.IsNullOrWhiteSpace(Model.Event.EndDate) || Model.Event.EndDate == Model.Event.StartDate ? "" : $" — {Model.Event.EndDate}")</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.Event.Location))
+                    {
+                        <span>⌖ @Model.Event.Location</span>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section id="participant-qr-card" class="participant-qr-card" hidden aria-live="polite">
+            <div class="participant-qr-copy">
+                <span class="eyebrow">QR CODE PESERTA</span>
+                <h2 id="participant-name"></h2>
+                <p><span id="participant-number"></span> · Tunjukkan QR ini kepada panitia untuk check-in dan check-out.</p>
+                <div id="participant-qr-error" class="participant-qr-error" hidden></div>
+            </div>
+            <img id="participant-qr-image" class="participant-qr-image" alt="QR Code peserta">
+        </section>
+
+        <section class="now-card" aria-live="polite">
+            <div class="now-icon" id="now-icon">◷</div>
+            <div class="now-copy">
+                <span class="now-label" id="now-label">JADWAL SAAT INI</span>
+                <h2 id="now-activity">@(currentItem?.SessionName ?? nextItem?.SessionName ?? (Model.Items.Count == 0 ? "Rundown belum tersedia" : "Rangkaian kegiatan selesai"))</h2>
+                <p id="now-detail">
+                    @if (currentItem is not null)
+                    {
+                        <span>Sedang berlangsung · @currentItem.StartTime.ToString("HH:mm")–@currentItem.EndTime.ToString("HH:mm") WIB</span>
+                    }
+                    else if (nextItem is not null)
+                    {
+                        <span>Agenda selanjutnya · @nextItem.StartTime.ToString("HH:mm") WIB</span>
+                    }
+                    else if (Model.Items.Count > 0)
+                    {
+                        <span>Seluruh agenda hari ini telah selesai.</span>
+                    }
+                    else
+                    {
+                        <span>Panitia akan memperbarui jadwal kegiatan ini.</span>
+                    }
+                </p>
+            </div>
+            <span class="live-badge" id="live-badge"><i></i><span>@(currentItem is null ? "LIVE WIB" : "SEDANG BERLANGSUNG")</span></span>
+        </section>
+
+        <section class="timeline-section">
+            <div class="section-heading">
+                <div><span class="eyebrow">IKUTI SETIAP MOMEN</span><h2>Jadwal kegiatan</h2></div>
+                <span class="timezone-note">Semua waktu dalam WIB (UTC+7)</span>
+            </div>
+            @if (Model.Items.Count == 0)
+            {
+                <div class="empty-schedule"><span>✦</span><h3>Rundown sedang disiapkan</h3><p>Jadwal kegiatan akan tampil di halaman ini setelah diperbarui panitia.</p></div>
+            }
+            else
+            {
+                <div id="schedule-timeline" class="schedule-timeline">
+                    @foreach (var day in Model.Items.GroupBy(item => item.StartTime.Date))
+                    {
+                        <section class="timeline-day">
+                            <h3 class="day-heading"><span class="day-marker"></span>@day.Key.ToString("dddd, d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("id-ID"))</h3>
+                            <div class="day-items">
+                                @foreach (var item in day)
+                                {
+                                    var isCurrent = item.StartTime <= Model.CurrentTimeWib && item.EndTime > Model.CurrentTimeWib;
+                                    var isDone = item.EndTime <= Model.CurrentTimeWib;
+                                    var icon = item.SessionName.Contains("makan", StringComparison.OrdinalIgnoreCase) ||
+                                               item.SessionName.Contains("sarapan", StringComparison.OrdinalIgnoreCase) ||
+                                               item.SessionName.Contains("ishoma", StringComparison.OrdinalIgnoreCase) ? "♨" :
+                                               item.SessionName.Contains("jalan", StringComparison.OrdinalIgnoreCase) ||
+                                               item.SessionName.Contains("keberangkatan", StringComparison.OrdinalIgnoreCase) ? "➤" :
+                                               item.SessionName.Contains("game", StringComparison.OrdinalIgnoreCase) ||
+                                               item.SessionName.Contains("team", StringComparison.OrdinalIgnoreCase) ? "✦" : "◈";
+                                    <article class="schedule-item @(isCurrent ? "is-current" : "") @(isDone ? "is-done" : "")"
+                                             data-start-ms="@item.StartTime.ToUnixTimeMilliseconds()"
+                                             data-end-ms="@item.EndTime.ToUnixTimeMilliseconds()"
+                                             data-session-id="@item.SessionId"
+                                             data-name="@item.SessionName"
+                                             data-description="@item.Description"
+                                             data-location="@item.Location">
+                                        <span class="timeline-rail"><span class="timeline-icon" aria-hidden="true">@icon</span></span>
+                                        <div class="activity-card">
+                                            <div class="activity-topline">
+                                                <span class="activity-time">@item.StartTime.ToString("HH:mm") <b>—</b> @item.EndTime.ToString("HH:mm") <small>WIB</small></span>
+                                                <span class="activity-state">@(isCurrent ? "SEDANG BERLANGSUNG" : isDone ? "SELESAI" : "AKAN DATANG")</span>
+                                            </div>
+                                            <h3>@item.SessionName</h3>
+                                            @if (!string.IsNullOrWhiteSpace(item.Description))
+                                            {
+                                                <p class="activity-description">@item.Description</p>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(item.Location))
+                                            {
+                                                <p class="activity-location">⌖ @item.Location</p>
+                                            }
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </section>
+                    }
+                </div>
+            }
+        </section>
+        <footer class="schedule-footer">Diperbarui otomatis · <span id="updated-at">WIB</span><span class="footer-brand">OMS · OUTING MANAGEMENT SYSTEM</span></footer>
+    </main>
+    <script src="~/js/event-schedule.js" asp-append-version="true"></script>
+</body>
+</html>

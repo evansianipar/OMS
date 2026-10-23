@@ -2,36 +2,65 @@ using OMS.Models;
 
 namespace OMS.Services;
 
-public sealed class UserDirectoryService(GoogleSheetsService sheets)
+public sealed class UserDirectoryService(OmsJsonDatabase database)
 {
     public async Task<OmsUser?> FindActiveUserAsync(string email, CancellationToken cancellationToken)
     {
-        var rows = await sheets.ReadAsync("'Users'!A1:G", cancellationToken);
+        var rows = await database.ReadAsync("'Users'!A1:Z", cancellationToken);
         if (rows.Count < 2) return null;
 
-        var headers = rows[0].Select(value => Convert.ToString(value)?.Trim() ?? string.Empty).ToList();
-        var emailIndex = headers.IndexOf("Email");
-        var nameIndex = headers.IndexOf("FullName");
-        var roleIndex = headers.IndexOf("Role");
-        var activeIndex = headers.IndexOf("IsActive");
-        if (emailIndex < 0 || roleIndex < 0 || activeIndex < 0)
-            throw new InvalidOperationException("Header sheet Users harus memiliki Email, Role, dan IsActive.");
+        var records = ToRecords(rows);
+        var record = records.FirstOrDefault(item =>
+            Get(item, "Email").Equals(email.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (record is null || !bool.TryParse(Get(record, "IsActive"), out var active) || !active)
+            return null;
 
-        foreach (var row in rows.Skip(1))
-        {
-            var rowEmail = GetCell(row, emailIndex).Trim();
-            if (!rowEmail.Equals(email, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!bool.TryParse(GetCell(row, activeIndex), out var isActive) || !isActive) return null;
+        var role = Get(record, "Role").ToUpperInvariant();
+        if (!new[] { "SUPERADMIN", "ADMIN", "REGISTRATION", "VIEWER" }.Contains(role))
+            throw new InvalidOperationException("Role pada database JSON Users tidak dikenal.");
 
-            var role = GetCell(row, roleIndex).Trim().ToUpperInvariant();
-            if (!new[] { "SUPERADMIN", "ADMIN", "REGISTRATION", "VIEWER" }.Contains(role))
-                throw new InvalidOperationException("Role pada sheet Users tidak dikenal.");
-            var fullName = nameIndex < 0 ? email : GetCell(row, nameIndex).Trim();
-            return new OmsUser(email, string.IsNullOrWhiteSpace(fullName) ? email : fullName, role);
-        }
-        return null;
+        var fullName = Get(record, "FullName");
+        return new OmsUser(email.Trim().ToLowerInvariant(),
+            string.IsNullOrWhiteSpace(fullName) ? email.Trim() : fullName, role);
     }
 
-    private static string GetCell(IList<object> row, int index) =>
-        index >= 0 && index < row.Count ? Convert.ToString(row[index]) ?? string.Empty : string.Empty;
+    public async Task<OmsUser?> VerifyCredentialsAsync(
+        string email,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        var rows = await database.ReadAsync("'Users'!A1:Z", cancellationToken);
+        var record = ToRecords(rows).FirstOrDefault(item =>
+            Get(item, "Email").Equals(email.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (record is null ||
+            !bool.TryParse(Get(record, "IsActive"), out var active) ||
+            !active ||
+            !PasswordCredential.Verify(password, Get(record, "PasswordHash"), Get(record, "PasswordSalt")))
+            return null;
+
+        var role = Get(record, "Role").ToUpperInvariant();
+        if (!new[] { "SUPERADMIN", "ADMIN", "REGISTRATION", "VIEWER" }.Contains(role))
+            throw new InvalidOperationException("Role pada database JSON Users tidak dikenal.");
+
+        var fullName = Get(record, "FullName");
+        var normalizedEmail = Get(record, "Email").Trim().ToLowerInvariant();
+        return new OmsUser(normalizedEmail, string.IsNullOrWhiteSpace(fullName) ? normalizedEmail : fullName, role);
+    }
+
+    private static IEnumerable<Dictionary<string, string>> ToRecords(IList<IList<object>> rows)
+    {
+        if (rows.Count < 2) return [];
+        var headers = rows[0].Select(Convert.ToString).Select(value => value?.Trim() ?? string.Empty).ToList();
+        return rows.Skip(1)
+            .Where(row => row.Any(value => !string.IsNullOrWhiteSpace(Convert.ToString(value))))
+            .Select(row => headers.Select((header, index) => (header, index))
+                .Where(item => !string.IsNullOrWhiteSpace(item.header))
+                .ToDictionary(
+                    item => item.header,
+                    item => item.index < row.Count ? Convert.ToString(row[item.index]) ?? string.Empty : string.Empty,
+                    StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static string Get(IReadOnlyDictionary<string, string> row, string key) =>
+        row.TryGetValue(key, out var value) ? value.Trim() : string.Empty;
 }

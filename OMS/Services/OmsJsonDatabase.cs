@@ -20,7 +20,7 @@ public sealed class OmsJsonDatabase
         {
             ["Users"] = ["UserId", "Email", "FullName", "Role", "IsActive", "CreatedAt", "UpdatedAt", "PasswordHash", "PasswordSalt"],
             ["Events"] = ["EventId", "EventCode", "EventName", "Description", "StartDate", "EndDate", "Location", "Status", "CreatedAt", "CreatedBy", "UpdatedAt"],
-            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt"],
+            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt", "EmployeeType", "PositionName", "Gender", "Camp", "Transport", "Vehicle"],
             ["Sessions"] = ["SessionId", "EventId", "SessionName", "Description", "StartTime", "EndTime", "Location", "SessionType", "Status", "CreatedAt"],
             ["Attendance"] = ["AttendanceId", "EventId", "ParticipantId", "SessionId", "AttendanceTime", "CheckInMethod", "CheckedBy", "Notes", "CreatedAt", "CheckOutTime", "CheckOutMethod", "CheckedOutBy"],
             ["AuditLog"] = ["AuditId", "EventId", "ActorEmail", "Action", "EntityType", "EntityId", "Timestamp", "Details"],
@@ -297,6 +297,94 @@ public sealed class OmsJsonDatabase
                 row[auditEntityTypeColumn].Equals("Participant", StringComparison.OrdinalIgnoreCase) &&
                 row[auditEntityIdColumn].Equals(participantId, StringComparison.Ordinal));
             return true;
+        }, write: true, cancellationToken);
+    }
+
+    public async Task<string> SaveParticipantAsync(
+        string eventId,
+        string? participantId,
+        ParticipantRequest request,
+        CancellationToken cancellationToken)
+    {
+        var employeeNumber = request.EmployeeNumber?.Trim() ?? string.Empty;
+        var fullName = request.FullName?.Trim() ?? string.Empty;
+        var email = request.Email?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(employeeNumber))
+            throw new InvalidOperationException("NIK wajib diisi.");
+        if (string.IsNullOrWhiteSpace(fullName))
+            throw new InvalidOperationException("Nama karyawan wajib diisi.");
+        if (email.Length > 254 || (email.Length > 0 && !System.Net.Mail.MailAddress.TryCreate(email, out _)))
+            throw new InvalidOperationException("Format email tidak valid.");
+        var fields = new Dictionary<string, (string? Value, int MaximumLength)>
+        {
+            ["NIK"] = (employeeNumber, 100),
+            ["Nama"] = (fullName, 200),
+            ["EMPLOYEE_TYPE"] = (request.EmployeeType, 100),
+            ["POSITION_NAME"] = (request.PositionName, 200),
+            ["ORG_NAME"] = (request.Department, 200),
+            ["GENDER"] = (request.Gender, 50),
+            ["CAMP"] = (request.Camp, 200),
+            ["TRANSPORT"] = (request.Transport, 200),
+            ["MOBIL"] = (request.Vehicle, 200)
+        };
+        var invalidField = fields.FirstOrDefault(field =>
+            (field.Value.Value?.Trim().Length ?? 0) > field.Value.MaximumLength);
+        if (!string.IsNullOrEmpty(invalidField.Key))
+            throw new InvalidOperationException($"Nilai kolom {invalidField.Key} terlalu panjang.");
+
+        return await InDatabaseAsync(document =>
+        {
+            var table = GetTable(document, "Participants");
+            var idColumn = RequireColumn(table, "ParticipantId");
+            var eventColumn = RequireColumn(table, "EventId");
+            var employeeColumn = RequireColumn(table, "EmployeeNumber");
+            List<string>? row = null;
+            if (!string.IsNullOrWhiteSpace(participantId))
+            {
+                row = table.Rows.SingleOrDefault(candidate =>
+                    idColumn < candidate.Count &&
+                    eventColumn < candidate.Count &&
+                    candidate[idColumn].Equals(participantId, StringComparison.Ordinal) &&
+                    candidate[eventColumn].Equals(eventId, StringComparison.Ordinal))
+                    ?? throw new InvalidOperationException("Peserta tidak ditemukan pada kegiatan ini.");
+            }
+
+            if (table.Rows.Any(candidate =>
+                    eventColumn < candidate.Count &&
+                    employeeColumn < candidate.Count &&
+                    candidate[eventColumn].Equals(eventId, StringComparison.Ordinal) &&
+                    candidate[employeeColumn].Equals(employeeNumber, StringComparison.OrdinalIgnoreCase) &&
+                    !ReferenceEquals(candidate, row)))
+                throw new InvalidOperationException($"NIK {employeeNumber} sudah terdaftar pada kegiatan ini.");
+
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            var savedParticipantId = participantId ?? Guid.NewGuid().ToString();
+            if (row is null)
+            {
+                row = [];
+                EnsureColumnCount(table, table.Headers.Count);
+                while (row.Count < table.Headers.Count) row.Add(string.Empty);
+                SetRowValue(table, row, "ParticipantId", savedParticipantId);
+                SetRowValue(table, row, "EventId", eventId);
+                SetRowValue(table, row, "QrTokenHash", string.Empty);
+                SetRowValue(table, row, "PhoneNumber", string.Empty);
+                SetRowValue(table, row, "CreatedAt", now);
+                table.Rows.Add(row);
+            }
+
+            SetRowValue(table, row, "EmployeeNumber", employeeNumber);
+            SetRowValue(table, row, "FullName", fullName);
+            SetRowValue(table, row, "EmployeeType", request.EmployeeType?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "PositionName", request.PositionName?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "Department", request.Department?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "Email", email.ToLowerInvariant());
+            SetRowValue(table, row, "IsActive", request.IsActive ? "TRUE" : "FALSE");
+            SetRowValue(table, row, "UpdatedAt", now);
+            SetRowValue(table, row, "Gender", request.Gender?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "Camp", request.Camp?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "Transport", request.Transport?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "Vehicle", request.Vehicle?.Trim() ?? string.Empty);
+            return savedParticipantId;
         }, write: true, cancellationToken);
     }
 

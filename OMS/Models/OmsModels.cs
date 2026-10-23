@@ -22,7 +22,13 @@ public sealed record OmsParticipant(
     string Department,
     [property: JsonIgnore] string Email,
     bool IsActive,
-    [property: JsonIgnore] string TokenHash = "");
+    [property: JsonIgnore] string TokenHash = "",
+    [property: JsonIgnore] string EmployeeType = "",
+    [property: JsonIgnore] string PositionName = "",
+    [property: JsonIgnore] string Gender = "",
+    [property: JsonIgnore] string Camp = "",
+    [property: JsonIgnore] string Transport = "",
+    [property: JsonIgnore] string Vehicle = "");
 
 public sealed record HomeViewModel(
     IReadOnlyList<OmsEvent> Events,
@@ -47,7 +53,34 @@ public sealed record ParticipantPage(
     int Total,
     int Page,
     int PageSize,
-    IReadOnlyList<OmsParticipant> Items);
+    IReadOnlyList<ParticipantListItem> Items);
+
+public sealed record ParticipantListItem(
+    string ParticipantId,
+    string EmployeeNumber,
+    string FullName,
+    string EmployeeType,
+    string PositionName,
+    string Department,
+    string Gender,
+    string Email,
+    string Camp,
+    string Transport,
+    string Vehicle,
+    bool IsActive);
+
+public sealed record ParticipantRequest(
+    string EmployeeNumber,
+    string FullName,
+    string? EmployeeType,
+    string? PositionName,
+    string? Department,
+    string? Gender,
+    string? Email,
+    string? Camp,
+    string? Transport,
+    string? Vehicle,
+    bool IsActive = true);
 
 public sealed record AttendanceReportRow(
     string EmployeeNumber,

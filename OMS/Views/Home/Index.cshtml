@@ -128,7 +128,7 @@
             }
             else if (Model.Page == "scanner" && canCheckIn)
             {
-                <div class="workspace-intro"><div><h2>Check-in peserta</h2><p>Scan pertama mencatat check-in. Scan ulang tidak mengubah status; check-out perlu dikonfirmasi operator</p></div></div>
+                @* <div class="workspace-intro"><div><h2>Check-in peserta</h2><p>Scan pertama akan mencatat check-in, dan ketika di scan ulang tidak mengubah statusnya, sedangkan untuk check-out perlu dikonfirmasi operator</p></div></div> *@
                 <article class="panel session-toolbar"><label class="form-label mb-0" for="session-select">Sesi check-in</label><select id="session-select" class="form-select"><option value="">Check-in umum kegiatan</option></select></article>
                 <div id="scan-result-area" aria-live="polite" aria-atomic="true"></div>
                 <div id="checkout-confirmation" class="alert alert-warning checkout-confirmation d-none" role="status" aria-live="polite">
@@ -159,17 +159,37 @@
                 <div class="workspace-intro"><div><h2>Peserta & QR</h2><p>Cari dan kelola peserta untuk kegiatan terpilih</p></div>
                     @if (canManage)
                     {
-                        <div class="button-row"><button class="btn btn-outline-secondary" onclick="document.getElementById('employee-master-file').click()">Unggah master CSV</button><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button><input id="employee-master-file" type="file" accept=".csv,text/csv" class="d-none"></div>
+                        <div class="button-row"><button class="btn btn-outline-secondary" onclick="document.getElementById('employee-master-file').click()">Unggah master CSV</button><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-outline-primary" id="add-participant">+ Tambah peserta</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button><input id="employee-master-file" type="file" accept=".csv,text/csv" class="d-none"></div>
                     }
                 </div>
                 @if (canManage)
                 {
                     <div id="invite-progress" class="alert alert-info d-none" role="status"></div>
+                    <article id="participant-form-panel" class="panel mb-4 d-none">
+                        <div class="panel-heading"><div><h3 id="participant-form-title">Tambah peserta</h3><p>Kolom NIK dan nama wajib diisi. Kolom lainnya dapat dilengkapi atau diperbaiki.</p></div></div>
+                        <form id="participant-form">
+                            <input id="participant-edit-id" type="hidden">
+                            <div class="row g-3">
+                                <div class="col-md-4"><label class="form-label" for="participant-employee-number">NIK *</label><input id="participant-employee-number" class="form-control" required maxlength="100"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-full-name">EMPLOYEE_NAME *</label><input id="participant-full-name" class="form-control" required maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-employee-type">EMPLOYEE_TYPE</label><input id="participant-employee-type" class="form-control" maxlength="100"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-position">POSITION_NAME</label><input id="participant-position" class="form-control" maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-department">ORG_NAME</label><input id="participant-department" class="form-control" maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-gender">GENDER</label><input id="participant-gender" class="form-control" maxlength="50"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-email">EMAIL</label><input id="participant-email" type="email" class="form-control" maxlength="254"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-camp">CAMP</label><input id="participant-camp" class="form-control" maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-transport">TRANSPORT</label><input id="participant-transport" class="form-control" maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-vehicle">MOBIL</label><input id="participant-vehicle" class="form-control" maxlength="200"></div>
+                                <div class="col-md-4"><label class="form-label" for="participant-status">Status peserta</label><select id="participant-status" class="form-select"><option value="true">Aktif</option><option value="false">Nonaktif</option></select></div>
+                            </div>
+                            <div class="button-row mt-3"><button id="participant-save" class="btn btn-primary" type="submit">Simpan peserta</button><button id="participant-cancel" class="btn btn-outline-secondary" type="button">Batal</button></div>
+                        </form>
+                    </article>
                 }
                 <article class="panel">
                     <div class="panel-heading"><div><h3>Daftar peserta</h3><p id="participant-page">Memuat data peserta</p></div></div>
-                    <input id="participant-search" class="form-control" placeholder="Cari berdasarkan NIK, nama, atau departemen" aria-label="Cari peserta">
-                    <div class="table-responsive mt-3"><table class="table table-hover align-middle"><thead><tr><th>NIK</th><th>Nama</th><th>Departemen</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="participant-table"></tbody></table></div>
+                    <input id="participant-search" class="form-control" placeholder="Cari berdasarkan NIK, nama, jabatan, departemen, email, camp, atau transport" aria-label="Cari peserta">
+                    <div class="table-responsive mt-3"><table class="table table-hover align-middle participant-table"><thead><tr><th>NIK</th><th>EMPLOYEE_NAME</th><th>EMPLOYEE_TYPE</th><th>POSITION_NAME</th><th>ORG_NAME</th><th>GENDER</th><th>EMAIL</th><th>CAMP</th><th>TRANSPORT</th><th>MOBIL</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="participant-table"></tbody></table></div>
                     <div class="d-flex justify-content-between align-items-center mt-3"><button id="participant-prev" class="btn btn-sm btn-outline-secondary">Sebelumnya</button><small id="participant-page-control" class="text-secondary"></small><button id="participant-next" class="btn btn-sm btn-outline-secondary">Berikutnya</button></div>
                     <div id="qr-output" class="qr-output d-none"><div id="qr-code"></div><p id="qr-caption" class="small mt-2 mb-2"></p><button id="download-qr" class="btn btn-sm btn-primary">Unduh QR PNG</button></div>
                 </article>
@@ -234,7 +254,7 @@
                     <article class="panel mb-4" id="schedule-management">
                         <div class="panel-heading">
                             <div><h3>Rundown kegiatan</h3><p>Atur agenda lintas hari. Waktu menggunakan WIB (Jakarta).</p></div>
-                            <a class="btn btn-outline-primary" href="/event/@selectedEvent.EventId/schedule" target="_blank" rel="noopener">Lihat halaman publik</a>
+                            <a class="btn btn-outline-primary" href="/event/@selectedEvent.EventId/schedule" target="_blank" rel="noopener">View Schedule</a>
                         </div>
                         <form id="schedule-item-form" class="mb-4">
                             <input id="schedule-session-id" type="hidden">
@@ -278,7 +298,7 @@
                                 }
                                 @if (agenda.Count == 0)
                                 {
-                                    <tr><td colspan="5" class="text-secondary">Belum ada rundown. Tambahkan agenda pertama di atas.</td></tr>
+                                    <tr><td colspan="5" class="text-secondary">Belum ada rundown acara</td></tr>
                                 }
                                 </tbody>
                             </table>

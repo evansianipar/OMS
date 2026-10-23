@@ -1,5 +1,5 @@
 (() => {
-    const state = { scanner: null, starting: false, scanning: false, requestInFlight: false, checkoutInFlight: false, checkoutCandidate: null, dashboardRefreshInFlight: false, participantPage: 1, reportPage: 1, participantQr: null };
+    const state = { scanner: null, starting: false, scanning: false, requestInFlight: false, checkoutInFlight: false, checkoutCandidate: null, dashboardRefreshInFlight: false, participantPage: 1, reportPage: 1, participantQr: null, participantsById: new Map() };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
     const eventSelect = document.getElementById('event-select');
     const currentPage = document.querySelector('.app-shell')?.dataset.page ?? 'dashboard';
@@ -361,16 +361,88 @@
             document.getElementById('participant-page-control').textContent = `Halaman ${pageData.page} dari ${pageCount}`;
             document.getElementById('participant-prev').disabled = pageData.page <= 1;
             document.getElementById('participant-next').disabled = pageData.page >= pageCount;
+            state.participantsById = new Map(pageData.items.map(participant => [participant.participantId, participant]));
             document.getElementById('participant-table').innerHTML = pageData.items.map(participant =>
-                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.department || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${canManage ? `<div class="d-flex flex-wrap gap-2">${participant.isActive ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button>` : ''}<button class="btn btn-sm btn-outline-danger" data-delete-participant="${escapeHtml(participant.participantId)}" data-participant-name="${escapeHtml(participant.fullName)}">Hapus</button></div>` : '-'}</td></tr>`
-            ).join('') || '<tr><td colspan="5" class="text-secondary">Tidak ada peserta.</td></tr>';
+                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.employeeType || '-')}</td><td>${escapeHtml(participant.positionName || '-')}</td><td>${escapeHtml(participant.department || '-')}</td><td>${escapeHtml(participant.gender || '-')}</td><td>${escapeHtml(participant.email || '-')}</td><td>${escapeHtml(participant.camp || '-')}</td><td>${escapeHtml(participant.transport || '-')}</td><td>${escapeHtml(participant.vehicle || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${canManage ? `<div class="d-flex flex-wrap gap-2">${participant.isActive ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button>` : ''}<button class="btn btn-sm btn-outline-secondary" data-edit-participant="${escapeHtml(participant.participantId)}">Edit</button><button class="btn btn-sm btn-outline-danger" data-delete-participant="${escapeHtml(participant.participantId)}" data-participant-name="${escapeHtml(participant.fullName)}">Hapus</button></div>` : '-'}</td></tr>`
+            ).join('') || '<tr><td colspan="12" class="text-secondary">Tidak ada peserta.</td></tr>';
             document.querySelectorAll('[data-qr-participant]').forEach(button =>
                 button.addEventListener('click', () => issueParticipantQr(button.dataset.qrParticipant)));
             document.querySelectorAll('[data-send-invitation]').forEach(button =>
                 button.addEventListener('click', () => sendIndividualInvitation(button)));
+            document.querySelectorAll('[data-edit-participant]').forEach(button =>
+                button.addEventListener('click', () => editParticipant(button.dataset.editParticipant)));
             document.querySelectorAll('[data-delete-participant]').forEach(button =>
                 button.addEventListener('click', () => deleteParticipant(button)));
         } catch (error) { notify(error.message, 'error'); }
+    }
+
+    function showParticipantForm(participant = null) {
+        const form = document.getElementById('participant-form');
+        const panel = document.getElementById('participant-form-panel');
+        if (!form || !panel) return;
+        form.reset();
+        document.getElementById('participant-edit-id').value = participant?.participantId ?? '';
+        document.getElementById('participant-employee-number').value = participant?.employeeNumber ?? '';
+        document.getElementById('participant-full-name').value = participant?.fullName ?? '';
+        document.getElementById('participant-employee-type').value = participant?.employeeType ?? '';
+        document.getElementById('participant-position').value = participant?.positionName ?? '';
+        document.getElementById('participant-department').value = participant?.department ?? '';
+        document.getElementById('participant-gender').value = participant?.gender ?? '';
+        document.getElementById('participant-email').value = participant?.email ?? '';
+        document.getElementById('participant-camp').value = participant?.camp ?? '';
+        document.getElementById('participant-transport').value = participant?.transport ?? '';
+        document.getElementById('participant-vehicle').value = participant?.vehicle ?? '';
+        document.getElementById('participant-status').value = String(participant?.isActive ?? true);
+        document.getElementById('participant-form-title').textContent = participant ? 'Edit data peserta' : 'Tambah peserta';
+        document.getElementById('participant-save').textContent = participant ? 'Simpan perubahan' : 'Simpan peserta';
+        panel.classList.remove('d-none');
+        document.getElementById('participant-employee-number').focus();
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function editParticipant(participantId) {
+        const participant = state.participantsById.get(participantId);
+        if (!participant) return notify('Data peserta tidak ditemukan pada halaman ini. Muat ulang daftar peserta.', 'error');
+        showParticipantForm(participant);
+    }
+
+    async function saveParticipant(event) {
+        event.preventDefault();
+        const participantId = document.getElementById('participant-edit-id').value;
+        const request = {
+            employeeNumber: document.getElementById('participant-employee-number').value.trim(),
+            fullName: document.getElementById('participant-full-name').value.trim(),
+            employeeType: document.getElementById('participant-employee-type').value.trim(),
+            positionName: document.getElementById('participant-position').value.trim(),
+            department: document.getElementById('participant-department').value.trim(),
+            gender: document.getElementById('participant-gender').value.trim(),
+            email: document.getElementById('participant-email').value.trim(),
+            camp: document.getElementById('participant-camp').value.trim(),
+            transport: document.getElementById('participant-transport').value.trim(),
+            vehicle: document.getElementById('participant-vehicle').value.trim(),
+            isActive: document.getElementById('participant-status').value === 'true'
+        };
+        const button = document.getElementById('participant-save');
+        button.disabled = true;
+        try {
+            const path = participantId
+                ? `/api/oms/participants/${encodeURIComponent(participantId)}?eventId=${encodeURIComponent(eventId())}`
+                : `/api/oms/participants?eventId=${encodeURIComponent(eventId())}`;
+            await api(path, {
+                method: participantId ? 'PUT' : 'POST',
+                body: JSON.stringify(request)
+            });
+            document.getElementById('participant-form-panel').classList.add('d-none');
+            document.getElementById('participant-form').reset();
+            document.getElementById('participant-edit-id').value = '';
+            state.participantPage = 1;
+            await loadParticipants();
+            notify(participantId ? 'Perubahan data peserta berhasil disimpan.' : 'Peserta berhasil ditambahkan.');
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
     }
 
     async function deleteParticipant(button) {
@@ -809,6 +881,13 @@
     document.getElementById('participant-next')?.addEventListener('click', () => {
         state.participantPage++;
         loadParticipants();
+    });
+    document.getElementById('add-participant')?.addEventListener('click', () => showParticipantForm());
+    document.getElementById('participant-form')?.addEventListener('submit', saveParticipant);
+    document.getElementById('participant-cancel')?.addEventListener('click', () => {
+        document.getElementById('participant-form-panel')?.classList.add('d-none');
+        document.getElementById('participant-form')?.reset();
+        document.getElementById('participant-edit-id').value = '';
     });
     document.getElementById('manual-search')?.addEventListener('input', () => {
         clearTimeout(searchTimer);

@@ -44,7 +44,7 @@
             <div class="participant-qr-copy">
                 <span class="eyebrow">QR CODE PESERTA</span>
                 <h2 id="participant-name"></h2>
-                <p><span id="participant-number"></span> · Tunjukkan QR ini kepada panitia untuk check-in dan check-out.</p>
+                <p><span id="participant-number"></span> · Tunjukkan QR ini kepada panitia untuk check-in dan check-out</p>
                 <div id="participant-qr-error" class="participant-qr-error" hidden></div>
             </div>
             <img id="participant-qr-image" class="participant-qr-image" alt="QR Code peserta">
@@ -66,11 +66,11 @@
                     }
                     else if (Model.Items.Count > 0)
                     {
-                        <span>Seluruh agenda hari ini telah selesai.</span>
+                        <span>Seluruh agenda hari ini telah selesai</span>
                     }
                     else
                     {
-                        <span>Panitia akan memperbarui jadwal kegiatan ini.</span>
+                        <span>Panitia akan memperbarui jadwal kegiatan ini</span>
                     }
                 </p>
             </div>
@@ -78,13 +78,9 @@
         </section>
 
         <section class="timeline-section">
-            <div class="section-heading">
-                <div><span class="eyebrow">IKUTI SETIAP MOMEN</span><h2>Jadwal kegiatan</h2></div>
-                <span class="timezone-note">Semua waktu dalam WIB (UTC+7)</span>
-            </div>
             @if (Model.Items.Count == 0)
             {
-                <div class="empty-schedule"><span>✦</span><h3>Rundown sedang disiapkan</h3><p>Jadwal kegiatan akan tampil di halaman ini setelah diperbarui panitia.</p></div>
+                <div class="empty-schedule"><h3>Rundown sedang disiapkan</h3><p>Jadwal kegiatan akan tampil di halaman ini setelah diperbarui panitia</p></div>
             }
             else
             {

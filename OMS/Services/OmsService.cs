@@ -193,6 +193,30 @@ public sealed class OmsService(
         }
     }
 
+    public async Task<string> SaveParticipantAsync(
+        string eventId,
+        string? participantId,
+        ParticipantRequest request,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            var savedId = await sheets.SaveParticipantAsync(eventId, participantId, request, cancellationToken);
+            await AuditAsync(eventId, actorEmail,
+                string.IsNullOrWhiteSpace(participantId) ? "CREATE" : "UPDATE",
+                "Participant", savedId,
+                $"Data peserta {request.EmployeeNumber.Trim()} disimpan.", cancellationToken);
+            return savedId;
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+    }
+
     public async Task<ImportSummary> ImportEmployeeMasterAsync(
         string eventId,
         string actorEmail,
@@ -207,9 +231,15 @@ public sealed class OmsService(
             var headers = master[0].Select(value => NormalizeHeader(Convert.ToString(value))).ToList();
             var employeeIndex = FindHeader(headers, "NIK", "EMPLOYEENUMBER", "NOMORPEGAWAI");
             var nameIndex = FindHeader(headers, "EMPLOYEENAME", "FULLNAME", "NAMA");
+            var employeeTypeIndex = FindHeader(headers, "EMPLOYEETYPE", "TIPEKARYAWAN", "STATUSKARYAWAN");
+            var positionIndex = FindHeader(headers, "POSITIONNAME", "POSITION", "JABATAN");
             var departmentIndex = FindHeader(headers, "ORGNAME", "DEPARTMENT", "DEPARTEMEN");
             var phoneIndex = FindHeader(headers, "PHONENUMBER", "PHONE", "NOMORHP");
             var emailIndex = FindHeader(headers, "EMAIL", "EMAILADDRESS");
+            var genderIndex = FindHeader(headers, "GENDER", "JENISKELAMIN");
+            var campIndex = FindHeader(headers, "CAMP");
+            var transportIndex = FindHeader(headers, "TRANSPORT", "TRANSPORTASI");
+            var vehicleIndex = FindHeader(headers, "MOBIL", "VEHICLE", "NOMOBIL");
             if (employeeIndex < 0 || nameIndex < 0)
                 throw new InvalidOperationException("Kolom wajib NIK dan EMPLOYEE_NAME tidak ditemukan pada master karyawan JSON.");
 
@@ -245,12 +275,18 @@ public sealed class OmsService(
                     Guid.NewGuid().ToString(), eventId, employeeNumber, fullName,
                     Cell(row, departmentIndex).Trim(), Cell(row, phoneIndex).Trim(),
                     Cell(row, emailIndex).Trim().ToLowerInvariant(), HashToken(NewQrToken()),
-                    true, at, at
+                    true, at, at,
+                    Cell(row, employeeTypeIndex).Trim(),
+                    Cell(row, positionIndex).Trim(),
+                    Cell(row, genderIndex).Trim(),
+                    Cell(row, campIndex).Trim(),
+                    Cell(row, transportIndex).Trim(),
+                    Cell(row, vehicleIndex).Trim()
                 });
             }
 
             if (additions.Count > 0)
-                await sheets.AppendRowsAsync("'Participants'!A:K", additions, cancellationToken);
+                await sheets.AppendRowsAsync("'Participants'!A:Q", additions, cancellationToken);
             await AuditAsync(eventId, actorEmail, "IMPORT", "Participant", string.Empty,
                 $"Impor {additions.Count} peserta; baris invalid {invalid}; duplikat sumber {duplicateSource}.",
                 cancellationToken);
@@ -277,12 +313,34 @@ public sealed class OmsService(
             participants = participants.Where(item =>
                 item.EmployeeNumber.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 item.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                item.Department.Contains(term, StringComparison.OrdinalIgnoreCase));
+                item.EmployeeType.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.PositionName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Department.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Gender.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Email.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Camp.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Transport.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Vehicle.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
         var results = participants.OrderBy(item => item.FullName, StringComparer.OrdinalIgnoreCase).ToList();
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 100);
-        return new ParticipantPage(results.Count, page, pageSize, results.Skip((page - 1) * pageSize).Take(pageSize).ToList());
+        var items = results.Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(item => new ParticipantListItem(
+                item.ParticipantId,
+                item.EmployeeNumber,
+                item.FullName,
+                item.EmployeeType,
+                item.PositionName,
+                item.Department,
+                item.Gender,
+                item.Email,
+                item.Camp,
+                item.Transport,
+                item.Vehicle,
+                item.IsActive))
+            .ToList();
+        return new ParticipantPage(results.Count, page, pageSize, items);
     }
 
     public async Task<QrIssueResponse> IssueQrAsync(
@@ -501,9 +559,16 @@ public sealed class OmsService(
         string scheduleUrl,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(participant.Email))
+            throw new InvalidOperationException($"Email peserta NIK {participant.EmployeeNumber} belum diisi.");
         if (!invitationInfoByEmployee.TryGetValue(participant.EmployeeNumber.Trim(), out var invitationInfo))
-            throw new InvalidOperationException(
-                $"Data NIK {participant.EmployeeNumber} tidak ditemukan pada master karyawan JSON. Unggah CSV master karyawan terlebih dahulu.");
+            invitationInfo = new EmployeeInvitationInfo(
+                participant.Camp, participant.Transport, participant.Vehicle);
+        else
+            invitationInfo = new EmployeeInvitationInfo(
+                string.IsNullOrWhiteSpace(participant.Camp) ? invitationInfo.Camp : participant.Camp,
+                string.IsNullOrWhiteSpace(participant.Transport) ? invitationInfo.Transport : participant.Transport,
+                string.IsNullOrWhiteSpace(participant.Vehicle) ? invitationInfo.Vehicle : participant.Vehicle);
 
         var qr = await IssueQrAsync(eventId, participant.ParticipantId, actorEmail, cancellationToken);
         var outing = await GetEventAsync(eventId, cancellationToken);
@@ -524,17 +589,14 @@ public sealed class OmsService(
         CancellationToken cancellationToken)
     {
         var master = await sheets.ReadAsync("'List All EMP LENGKAP'!A1:Z", cancellationToken);
-        if (master.Count < 2)
-            throw new InvalidOperationException("Sheet master karyawan tidak ditemukan atau kosong.");
+        if (master.Count < 2) return new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase);
 
         var headers = master[0].Select(value => NormalizeHeader(Convert.ToString(value))).ToList();
         var employeeIndex = FindHeader(headers, "NIK", "EMPLOYEENUMBER", "NOMORPEGAWAI");
         var campIndex = FindHeader(headers, "CAMP");
         var transportIndex = FindHeader(headers, "TRANSPORT");
-        var vehicleIndex = FindHeader(headers, "MOBIL", "NOMOBIL");
-        if (employeeIndex < 0 || campIndex < 0 || transportIndex < 0 || vehicleIndex < 0)
-            throw new InvalidOperationException(
-                "Kolom NIK, CAMP, TRANSPORT, dan MOBIL harus tersedia pada master karyawan JSON untuk mengirim undangan");
+        var vehicleIndex = FindHeader(headers, "MOBIL", "VEHICLE", "NOMOBIL");
+        if (employeeIndex < 0) return new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase);
 
         var invitationInfoByEmployee = new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in master.Skip(1))
@@ -1008,7 +1070,13 @@ public sealed class OmsService(
                 Get(row, "ParticipantId"), Get(row, "EventId"), Get(row, "EmployeeNumber"),
                 Get(row, "FullName"), Get(row, "Department"), Get(row, "Email"),
                 bool.TryParse(Get(row, "IsActive"), out var active) && active,
-                Get(row, "QrTokenHash")))
+                Get(row, "QrTokenHash"),
+                Get(row, "EmployeeType"),
+                Get(row, "PositionName"),
+                Get(row, "Gender"),
+                Get(row, "Camp"),
+                Get(row, "Transport"),
+                Get(row, "Vehicle")))
             .ToList();
     }
 

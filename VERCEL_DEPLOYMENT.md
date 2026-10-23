@@ -51,7 +51,7 @@ Pastikan App Password disalin tanpa spasi pemisah yang ditampilkan Google. Janga
 1. Deploy project dan tunggu hingga deployment berstatus Ready.
 2. Buka URL production dan masuk dengan email/password bootstrap yang dikonfigurasi.
 3. Pada database JSON yang masih kosong, OMS membuat tabel dan akun bootstrap `SUPERADMIN` secara otomatis. Kredensial bootstrap hanya digunakan saat belum ada pengguna; mengubah environment variable kemudian tidak akan mereset password database yang sudah terbentuk.
-4. Muat data master karyawan melalui fitur unggah CSV pada halaman Peserta. Gunakan header kolom yang didukung OMS, sesuai template/ekspor master karyawan yang tersedia di aplikasi.
+4. Muat data master karyawan melalui fitur unggah CSV pada halaman Peserta. OMS mendukung kolom `NIK`, `EMPLOYEE_NAME`, `EMPLOYEE_TYPE`, `POSITION_NAME`, `ORG_NAME`, `GENDER`, `EMAIL`, `CAMP`, `TRANSPORT`, dan `MOBIL`; kolom wajib adalah `NIK` dan `EMPLOYEE_NAME`. Setelah impor, seluruh data tersebut tampil di daftar Peserta & QR dan dapat diedit. Panitia juga dapat menambahkan peserta satu per satu dari formulir manual tanpa mengunggah ulang CSV.
 5. Buat kegiatan dan peserta dari aplikasi, lalu uji check-in dan pengiriman undangan ke alamat email yang dapat Anda akses.
 
 Simpan email/password admin dengan aman. Jika password admin terlupa, environment bootstrap tidak mereset akun yang sudah tersimpan; lakukan prosedur pemulihan yang sesuai dan jangan menghapus Blob database secara sembarang.

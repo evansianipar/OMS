@@ -138,6 +138,31 @@ public sealed class OmsApiController(
         return Ok(await oms.ListParticipantsAsync(eventId, query, page, pageSize, cancellationToken));
     }
 
+    [HttpPost("participants")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateParticipant(
+        [FromQuery] string eventId,
+        [FromBody] ParticipantRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        var participantId = await oms.SaveParticipantAsync(eventId, null, request, CurrentEmail(), cancellationToken);
+        return Ok(new { participantId });
+    }
+
+    [HttpPut("participants/{participantId}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateParticipant(
+        string participantId,
+        [FromQuery] string eventId,
+        [FromBody] ParticipantRequest request,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        await oms.SaveParticipantAsync(eventId, participantId, request, CurrentEmail(), cancellationToken);
+        return Ok(new { participantId });
+    }
+
     [HttpDelete("participants/{participantId}")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteParticipant(

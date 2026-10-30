@@ -159,7 +159,7 @@
                 <div class="workspace-intro"><div><h2>Peserta & QR</h2><p>Cari dan kelola peserta untuk kegiatan terpilih</p></div>
                     @if (canManage)
                     {
-                        <div class="button-row"><button class="btn btn-outline-secondary" onclick="document.getElementById('employee-master-file').click()">Unggah master CSV</button><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-outline-primary" id="add-participant">+ Tambah peserta</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button><input id="employee-master-file" type="file" accept=".csv,text/csv" class="d-none"></div>
+                        <div class="button-row"><button class="btn btn-outline-secondary" onclick="document.getElementById('employee-master-file').click()">Unggah master CSV</button><button class="btn btn-outline-primary" onclick="importMaster()">Impor master karyawan</button><button class="btn btn-outline-primary" id="add-participant">+ Tambah peserta</button><button class="btn btn-outline-danger" id="delete-all-participants">Hapus semua peserta</button><button class="btn btn-primary" id="send-invitations" onclick="sendInvitations()">Kirim semua undangan</button><input id="employee-master-file" type="file" accept=".csv,text/csv" class="d-none"></div>
                     }
                 </div>
                 @if (canManage)

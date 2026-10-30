@@ -163,6 +163,16 @@ public sealed class OmsApiController(
         return Ok(new { participantId });
     }
 
+    [HttpDelete("events/{eventId}/participants")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAllParticipants(
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        return Ok(await oms.DeleteAllParticipantsAsync(eventId, CurrentEmail(), cancellationToken));
+    }
+
     [HttpDelete("participants/{participantId}")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteParticipant(

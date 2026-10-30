@@ -300,6 +300,44 @@ public sealed class OmsJsonDatabase
         }, write: true, cancellationToken);
     }
 
+    public async Task<ParticipantDeletionSummary> DeleteAllParticipantsAsync(
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        return await InDatabaseAsync(document =>
+        {
+            var participants = GetTable(document, "Participants");
+            var participantEventColumn = RequireColumn(participants, "EventId");
+            var participantIdColumn = RequireColumn(participants, "ParticipantId");
+            var participantIds = participants.Rows
+                .Where(row => participantEventColumn < row.Count &&
+                    participantIdColumn < row.Count &&
+                    row[participantEventColumn].Equals(eventId, StringComparison.Ordinal))
+                .Select(row => row[participantIdColumn])
+                .ToHashSet(StringComparer.Ordinal);
+            var participantCount = participants.Rows.RemoveAll(row =>
+                participantEventColumn < row.Count &&
+                row[participantEventColumn].Equals(eventId, StringComparison.Ordinal));
+
+            var attendance = GetTable(document, "Attendance");
+            var attendanceParticipantColumn = RequireColumn(attendance, "ParticipantId");
+            var attendanceCount = attendance.Rows.RemoveAll(row =>
+                attendanceParticipantColumn < row.Count &&
+                participantIds.Contains(row[attendanceParticipantColumn]));
+
+            var audit = GetTable(document, "AuditLog");
+            var auditEntityTypeColumn = RequireColumn(audit, "EntityType");
+            var auditEntityIdColumn = RequireColumn(audit, "EntityId");
+            var auditCount = audit.Rows.RemoveAll(row =>
+                auditEntityTypeColumn < row.Count &&
+                auditEntityIdColumn < row.Count &&
+                row[auditEntityTypeColumn].Equals("Participant", StringComparison.OrdinalIgnoreCase) &&
+                participantIds.Contains(row[auditEntityIdColumn]));
+
+            return new ParticipantDeletionSummary(participantCount, attendanceCount, auditCount);
+        }, write: true, cancellationToken);
+    }
+
     public async Task<string> SaveParticipantAsync(
         string eventId,
         string? participantId,

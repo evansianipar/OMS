@@ -467,6 +467,34 @@
         }
     }
 
+    async function deleteAllParticipants() {
+        const selectedEvent = eventSelect?.selectedOptions[0]?.textContent?.trim() || 'kegiatan terpilih';
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu.', 'warning');
+        if (!confirm(
+            `Hapus SEMUA peserta dari ${selectedEvent}?\n\n` +
+            'Tindakan ini permanen dan juga menghapus catatan kehadiran serta audit terkait peserta. ' +
+            'Master karyawan CSV dan kegiatan tidak dihapus.'))
+            return;
+
+        const button = document.getElementById('delete-all-participants');
+        button.disabled = true;
+        try {
+            const result = await api(`/api/oms/events/${encodeURIComponent(eventId())}/participants`, {
+                method: 'DELETE'
+            });
+            state.participantPage = 1;
+            document.getElementById('qr-output')?.classList.add('d-none');
+            await loadParticipants();
+            notify(
+                `${result.participants} peserta dihapus; ${result.attendanceRecords} catatan kehadiran dan ` +
+                `${result.auditRecords} audit peserta terkait turut dihapus.`);
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    }
+
     async function issueParticipantQr(participantId) {
         if (typeof QRCode === 'undefined') return notify('Library QR Code belum termuat', 'error');
         if (!confirm('QR baru akan membatalkan QR lama peserta ini. Lanjutkan?')) return;
@@ -884,6 +912,7 @@
         state.participantPage++;
         loadParticipants();
     });
+    document.getElementById('delete-all-participants')?.addEventListener('click', deleteAllParticipants);
     document.getElementById('add-participant')?.addEventListener('click', () => showParticipantForm());
     document.getElementById('participant-form')?.addEventListener('submit', saveParticipant);
     document.getElementById('participant-cancel')?.addEventListener('click', () => {

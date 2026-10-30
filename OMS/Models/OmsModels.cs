@@ -136,6 +136,11 @@ public sealed record EventDeletionSummary(
     int AttendanceRecords,
     int AuditRecords);
 
+public sealed record ParticipantDeletionSummary(
+    int Participants,
+    int AttendanceRecords,
+    int AuditRecords);
+
 public sealed record ScheduleItemRequest(
     string SessionName,
     string? Description,

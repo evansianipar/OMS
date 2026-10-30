@@ -193,6 +193,28 @@ public sealed class OmsService(
         }
     }
 
+    public async Task<ParticipantDeletionSummary> DeleteAllParticipantsAsync(
+        string eventId,
+        string actorEmail,
+        CancellationToken cancellationToken)
+    {
+        await AttendanceLock.WaitAsync(cancellationToken);
+        try
+        {
+            await GetEventAsync(eventId, cancellationToken);
+            var summary = await sheets.DeleteAllParticipantsAsync(eventId, cancellationToken);
+            await AuditAsync(eventId, actorEmail, "DELETE_ALL", "Participant", string.Empty,
+                $"Hapus semua peserta kegiatan: {summary.Participants} peserta, " +
+                $"{summary.AttendanceRecords} catatan kehadiran, dan {summary.AuditRecords} audit peserta dihapus.",
+                cancellationToken);
+            return summary;
+        }
+        finally
+        {
+            AttendanceLock.Release();
+        }
+    }
+
     public async Task<string> SaveParticipantAsync(
         string eventId,
         string? participantId,

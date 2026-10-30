@@ -20,11 +20,11 @@ public sealed class OmsJsonDatabase
         {
             ["Users"] = ["UserId", "Email", "FullName", "Role", "IsActive", "CreatedAt", "UpdatedAt", "PasswordHash", "PasswordSalt"],
             ["Events"] = ["EventId", "EventCode", "EventName", "Description", "StartDate", "EndDate", "Location", "Status", "CreatedAt", "CreatedBy", "UpdatedAt"],
-            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt", "EmployeeType", "PositionName", "Gender", "Camp", "Transport", "Vehicle"],
+            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt", "EmployeeType", "PositionName", "Gender", "Camp", "Transport", "Vehicle", "GroupNumber"],
             ["Sessions"] = ["SessionId", "EventId", "SessionName", "Description", "StartTime", "EndTime", "Location", "SessionType", "Status", "CreatedAt"],
             ["Attendance"] = ["AttendanceId", "EventId", "ParticipantId", "SessionId", "AttendanceTime", "CheckInMethod", "CheckedBy", "Notes", "CreatedAt", "CheckOutTime", "CheckOutMethod", "CheckedOutBy"],
             ["AuditLog"] = ["AuditId", "EventId", "ActorEmail", "Action", "EntityType", "EntityId", "Timestamp", "Details"],
-            ["List All EMP LENGKAP"] = ["NIK", "EMPLOYEE_NAME", "ORG_NAME", "PHONE_NUMBER", "EMAIL", "CAMP", "TRANSPORT", "VEHICLE"]
+            ["List All EMP LENGKAP"] = ["NIK", "EMPLOYEE_NAME", "EMPLOYEE_TYPE", "POSITION_NAME", "ORG_NAME", "GENDER", "EMAIL", "CAMP", "TRANSPORT", "MOBIL", "GROUP_NUMBER"]
         };
 
     private readonly VercelBlobStorage _blobStorage;
@@ -325,7 +325,8 @@ public sealed class OmsJsonDatabase
             ["GENDER"] = (request.Gender, 50),
             ["CAMP"] = (request.Camp, 200),
             ["TRANSPORT"] = (request.Transport, 200),
-            ["MOBIL"] = (request.Vehicle, 200)
+            ["MOBIL"] = (request.Vehicle, 200),
+            ["GROUP_NUMBER"] = (request.GroupNumber, 100)
         };
         var invalidField = fields.FirstOrDefault(field =>
             (field.Value.Value?.Trim().Length ?? 0) > field.Value.MaximumLength);
@@ -384,6 +385,7 @@ public sealed class OmsJsonDatabase
             SetRowValue(table, row, "Camp", request.Camp?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Transport", request.Transport?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Vehicle", request.Vehicle?.Trim() ?? string.Empty);
+            SetRowValue(table, row, "GroupNumber", request.GroupNumber?.Trim() ?? string.Empty);
             return savedParticipantId;
         }, write: true, cancellationToken);
     }

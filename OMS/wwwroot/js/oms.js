@@ -363,8 +363,8 @@
             document.getElementById('participant-next').disabled = pageData.page >= pageCount;
             state.participantsById = new Map(pageData.items.map(participant => [participant.participantId, participant]));
             document.getElementById('participant-table').innerHTML = pageData.items.map(participant =>
-                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.employeeType || '-')}</td><td>${escapeHtml(participant.positionName || '-')}</td><td>${escapeHtml(participant.department || '-')}</td><td>${escapeHtml(participant.gender || '-')}</td><td>${escapeHtml(participant.email || '-')}</td><td>${escapeHtml(participant.camp || '-')}</td><td>${escapeHtml(participant.transport || '-')}</td><td>${escapeHtml(participant.vehicle || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${canManage ? `<div class="d-flex flex-wrap gap-2">${participant.isActive ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button>` : ''}<button class="btn btn-sm btn-outline-secondary" data-edit-participant="${escapeHtml(participant.participantId)}">Edit</button><button class="btn btn-sm btn-outline-danger" data-delete-participant="${escapeHtml(participant.participantId)}" data-participant-name="${escapeHtml(participant.fullName)}">Hapus</button></div>` : '-'}</td></tr>`
-            ).join('') || '<tr><td colspan="12" class="text-secondary">Tidak ada peserta.</td></tr>';
+                `<tr><td>${escapeHtml(participant.employeeNumber)}</td><td>${escapeHtml(participant.fullName)}</td><td>${escapeHtml(participant.employeeType || '-')}</td><td>${escapeHtml(participant.positionName || '-')}</td><td>${escapeHtml(participant.department || '-')}</td><td>${escapeHtml(participant.gender || '-')}</td><td>${escapeHtml(participant.email || '-')}</td><td>${escapeHtml(participant.camp || '-')}</td><td>${escapeHtml(participant.transport || '-')}</td><td>${escapeHtml(participant.vehicle || '-')}</td><td>${escapeHtml(participant.groupNumber || '-')}</td><td><span class="badge ${participant.isActive ? 'text-bg-success' : 'text-bg-secondary'}">${participant.isActive ? 'Aktif' : 'Nonaktif'}</span></td><td>${canManage ? `<div class="d-flex flex-wrap gap-2">${participant.isActive ? `<button class="btn btn-sm btn-outline-primary" data-qr-participant="${escapeHtml(participant.participantId)}">Buat QR</button><button class="btn btn-sm btn-primary" data-send-invitation="${escapeHtml(participant.participantId)}">Kirim undangan</button>` : ''}<button class="btn btn-sm btn-outline-secondary" data-edit-participant="${escapeHtml(participant.participantId)}">Edit</button><button class="btn btn-sm btn-outline-danger" data-delete-participant="${escapeHtml(participant.participantId)}" data-participant-name="${escapeHtml(participant.fullName)}">Hapus</button></div>` : '-'}</td></tr>`
+            ).join('') || '<tr><td colspan="13" class="text-secondary">Tidak ada peserta.</td></tr>';
             document.querySelectorAll('[data-qr-participant]').forEach(button =>
                 button.addEventListener('click', () => issueParticipantQr(button.dataset.qrParticipant)));
             document.querySelectorAll('[data-send-invitation]').forEach(button =>
@@ -392,6 +392,7 @@
         document.getElementById('participant-camp').value = participant?.camp ?? '';
         document.getElementById('participant-transport').value = participant?.transport ?? '';
         document.getElementById('participant-vehicle').value = participant?.vehicle ?? '';
+        document.getElementById('participant-group-number').value = participant?.groupNumber ?? '';
         document.getElementById('participant-status').value = String(participant?.isActive ?? true);
         document.getElementById('participant-form-title').textContent = participant ? 'Edit data peserta' : 'Tambah peserta';
         document.getElementById('participant-save').textContent = participant ? 'Simpan perubahan' : 'Simpan peserta';
@@ -420,6 +421,7 @@
             camp: document.getElementById('participant-camp').value.trim(),
             transport: document.getElementById('participant-transport').value.trim(),
             vehicle: document.getElementById('participant-vehicle').value.trim(),
+            groupNumber: document.getElementById('participant-group-number').value.trim(),
             isActive: document.getElementById('participant-status').value === 'true'
         };
         const button = document.getElementById('participant-save');

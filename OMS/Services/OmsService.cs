@@ -240,15 +240,19 @@ public sealed class OmsService(
             var campIndex = FindHeader(headers, "CAMP");
             var transportIndex = FindHeader(headers, "TRANSPORT", "TRANSPORTASI");
             var vehicleIndex = FindHeader(headers, "MOBIL", "VEHICLE", "NOMOBIL");
+            var groupNumberIndex = FindHeader(headers, "GROUPNUMBER", "NOMORGROUP", "GRUP");
             if (employeeIndex < 0 || nameIndex < 0)
                 throw new InvalidOperationException("Kolom wajib NIK dan EMPLOYEE_NAME tidak ditemukan pada master karyawan JSON.");
 
-            var participantsRows = await sheets.ReadAsync("'Participants'!A1:K", cancellationToken);
-            var existing = ToRecords(participantsRows)
+            var participantsRows = await sheets.ReadAsync("'Participants'!A1:R", cancellationToken);
+            var existingRows = ToRecords(participantsRows)
                 .Where(row => Get(row, "EventId") == eventId)
+                .ToList();
+            var existing = existingRows
                 .Select(row => Get(row, "EmployeeNumber"))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var seenSource = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var sourceGroupNumbers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var additions = new List<IList<object>>();
             var invalid = 0;
             var duplicateSource = 0;
@@ -262,6 +266,8 @@ public sealed class OmsService(
                     if (row.Any(value => !string.IsNullOrWhiteSpace(Convert.ToString(value)))) invalid++;
                     continue;
                 }
+                if (!sourceGroupNumbers.ContainsKey(employeeNumber))
+                    sourceGroupNumbers[employeeNumber] = Cell(row, groupNumberIndex).Trim();
                 if (existing.Contains(employeeNumber)) continue;
                 if (!seenSource.Add(employeeNumber))
                 {
@@ -281,12 +287,43 @@ public sealed class OmsService(
                     Cell(row, genderIndex).Trim(),
                     Cell(row, campIndex).Trim(),
                     Cell(row, transportIndex).Trim(),
-                    Cell(row, vehicleIndex).Trim()
+                    Cell(row, vehicleIndex).Trim(),
+                    Cell(row, groupNumberIndex).Trim()
                 });
             }
 
             if (additions.Count > 0)
-                await sheets.AppendRowsAsync("'Participants'!A:Q", additions, cancellationToken);
+                await sheets.AppendRowsAsync("'Participants'!A:R", additions, cancellationToken);
+            if (groupNumberIndex >= 0)
+            {
+                var participantHeaders = participantsRows[0]
+                    .Select(value => Convert.ToString(value)?.Trim() ?? string.Empty).ToList();
+                var participantGroupIndex = participantHeaders.FindIndex(header =>
+                    NormalizeHeader(header) == NormalizeHeader("GroupNumber"));
+                var participantEventIndex = participantHeaders.FindIndex(header =>
+                    NormalizeHeader(header) == NormalizeHeader("EventId"));
+                var participantEmployeeIndex = participantHeaders.FindIndex(header =>
+                    NormalizeHeader(header) == NormalizeHeader("EmployeeNumber"));
+                if (new[] { participantGroupIndex, participantEventIndex, participantEmployeeIndex }.Any(index => index < 0))
+                    throw new InvalidOperationException("Kolom GROUP_NUMBER tidak tersedia pada struktur database peserta.");
+
+                var groupUpdates = new List<JsonValueRange>();
+                for (var index = 1; index < participantsRows.Count; index++)
+                {
+                    var row = participantsRows[index];
+                    if (Cell(row, participantEventIndex) != eventId ||
+                        !sourceGroupNumbers.TryGetValue(Cell(row, participantEmployeeIndex), out var groupNumber) ||
+                        string.IsNullOrWhiteSpace(groupNumber))
+                        continue;
+                    groupUpdates.Add(new JsonValueRange
+                    {
+                        Range = $"'Participants'!{ColumnName(participantGroupIndex)}{index + 1}:{ColumnName(participantGroupIndex)}{index + 1}",
+                        Values = new List<IList<object>> { new List<object> { groupNumber } }
+                    });
+                }
+                if (groupUpdates.Count > 0)
+                    await sheets.UpdateManyAsync(groupUpdates, cancellationToken);
+            }
             await AuditAsync(eventId, actorEmail, "IMPORT", "Participant", string.Empty,
                 $"Impor {additions.Count} peserta; baris invalid {invalid}; duplikat sumber {duplicateSource}.",
                 cancellationToken);
@@ -320,7 +357,8 @@ public sealed class OmsService(
                 item.Email.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 item.Camp.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 item.Transport.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                item.Vehicle.Contains(term, StringComparison.OrdinalIgnoreCase));
+                item.Vehicle.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.GroupNumber.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
         var results = participants.OrderBy(item => item.FullName, StringComparer.OrdinalIgnoreCase).ToList();
         page = Math.Max(1, page);
@@ -338,6 +376,7 @@ public sealed class OmsService(
                 item.Camp,
                 item.Transport,
                 item.Vehicle,
+                item.GroupNumber,
                 item.IsActive))
             .ToList();
         return new ParticipantPage(results.Count, page, pageSize, items);
@@ -1076,7 +1115,8 @@ public sealed class OmsService(
                 Get(row, "Gender"),
                 Get(row, "Camp"),
                 Get(row, "Transport"),
-                Get(row, "Vehicle")))
+                Get(row, "Vehicle"),
+                Get(row, "GroupNumber")))
             .ToList();
     }
 

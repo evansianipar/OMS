@@ -76,9 +76,19 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
         $"Tanggal: {FormatDate(outing.StartDate)}\r\n" +
         $"Lokasi: {Fallback(outing.Location, "Akan diinformasikan")}\r\n" +
         $"Kode peserta: {participant.EmployeeNumber}\r\n" +
+        $"Group number: {Fallback(participant.GroupNumber, "Belum ditentukan")}\r\n" +
         $"Camp / nomor kamar: {Fallback(camp, "Belum ditentukan")}\r\n" +
         $"Transportasi: {Fallback(transport, "Belum ditentukan")}\r\n" +
-        $"Nomor kendaraan: {Fallback(vehicle, "Belum ditentukan")}\r\n\r\n" +
+        $"Nomor kendaraan: {Fallback(vehicle, "-")}\r\n\r\n" +
+        "INFORMASI OUTFIT DAN KADO\r\n" +
+        "Dress code:\r\n" +
+        "- Day 1: POLO WOM\r\n" +
+        "- Gala dinner: bebas\r\n" +
+        "- Day 2: warna putih\r\n" +
+        "- Celana: bebas\r\n\r\n" +
+        "Kado:\r\n" +
+        "- Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000 (tanpa batas maksimal).\r\n" +
+        "- Kado bukan berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat.\r\n\r\n" +
         $"Lihat rundown kegiatan: {scheduleUrl}\r\n\r\n" +
         "Tunjukkan QR Code pada email ini kepada panitia saat check-in dan check-out.";
 
@@ -107,13 +117,23 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
             : DetailRow("Sampai", FormatDate(outing.EndDate))) +
         DetailRow("Lokasi", Fallback(outing.Location, "Akan diinformasikan")) +
         DetailRow("Kode peserta", participant.EmployeeNumber) +
+        DetailRow("Group number", Fallback(participant.GroupNumber, "Belum ditentukan")) +
         DetailRow("Camp / nomor kamar", Fallback(camp, "Belum ditentukan")) +
         DetailRow("Transportasi", Fallback(transport, "Belum ditentukan")) +
-        DetailRow("Nomor kendaraan", Fallback(vehicle, "Belum ditentukan"), last: true) +
+        DetailRow("Nomor kendaraan", Fallback(vehicle, "-"), last: true) +
         "</table></td></tr>" +
+        "<tr><td style=\"padding:8px 32px 18px\">" +
+        "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background-color:#f5efe5;border:1px solid #d9c7ad;border-radius:8px\">" +
+        "<tr><td style=\"padding:18px 20px;font-size:13px;line-height:1.7;color:#52627a\">" +
+        "<div style=\"font-size:15px;font-weight:bold;color:#6f4e37;margin-bottom:8px\">Informasi outfit dan kado</div>" +
+        "<strong style=\"color:#24324b\">Dress code</strong><br>" +
+        "Day 1: POLO WOM<br>Gala dinner: bebas<br>Day 2: warna putih<br>Celana: bebas" +
+        "<br><br><strong style=\"color:#24324b\">Kado</strong><br>" +
+        "Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000, tanpa batas maksimal. Kado tidak boleh berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat." +
+        "</td></tr></table></td></tr>" +
         "<tr><td align=\"center\" style=\"padding:18px 32px 28px\">" +
         "<div style=\"font-size:14px;font-weight:bold;color:#24324b\">QR Code Peserta</div>" +
-        "<p style=\"font-size:13px;line-height:1.6;color:#64748b;margin:6px 0 14px\">Tunjukkan QR ini kepada panitia saat check-in dan check-out.</p>" +
+        "<p style=\"font-size:13px;line-height:1.6;color:#64748b;margin:6px 0 14px\">Tunjukkan QR ini kepada panitia saat check-in dan check-out</p>" +
         "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;background-color:#ffffff;border:1px solid #e3e9f2;border-radius:10px\"><tr><td style=\"padding:12px\">" +
         "<img src=\"cid:participantQr\" alt=\"QR Code peserta OMS\" width=\"220\" height=\"220\" style=\"display:block;width:220px;height:220px;border:0\">" +
         "</td></tr></table>" +
@@ -124,7 +144,7 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
         "<p style=\"font-size:12px;color:#64748b;margin:16px 0 0\">QR Code ini bersifat pribadi. Jangan bagikan kepada orang lain.</p>" +
         "</td></tr>" +
         "<tr><td style=\"padding:18px 32px;background-color:#f7f9fc;border-top:1px solid #e7edf5;font-size:12px;line-height:1.6;color:#64748b\">" +
-        "Salam hangat,<br><strong style=\"color:#24324b\">Panitia Outing</strong>" +
+        "Salam hangat,<br><strong style=\"color:#24324b\">Panitia Outing ROAR 30 </strong>" +
         "</td></tr></table></td></tr></table></body></html>";
 
     private static string DetailRow(string label, string value, bool last = false) =>

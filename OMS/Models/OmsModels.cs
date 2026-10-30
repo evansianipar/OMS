@@ -28,7 +28,8 @@ public sealed record OmsParticipant(
     [property: JsonIgnore] string Gender = "",
     [property: JsonIgnore] string Camp = "",
     [property: JsonIgnore] string Transport = "",
-    [property: JsonIgnore] string Vehicle = "");
+    [property: JsonIgnore] string Vehicle = "",
+    [property: JsonIgnore] string GroupNumber = "");
 
 public sealed record HomeViewModel(
     IReadOnlyList<OmsEvent> Events,
@@ -67,6 +68,7 @@ public sealed record ParticipantListItem(
     string Camp,
     string Transport,
     string Vehicle,
+    string GroupNumber,
     bool IsActive);
 
 public sealed record ParticipantRequest(
@@ -80,6 +82,7 @@ public sealed record ParticipantRequest(
     string? Camp,
     string? Transport,
     string? Vehicle,
+    string? GroupNumber,
     bool IsActive = true);
 
 public sealed record AttendanceReportRow(

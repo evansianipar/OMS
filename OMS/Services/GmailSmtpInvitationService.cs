@@ -7,9 +7,15 @@ using System.Net.Mail;
 
 namespace OMS.Services;
 
-public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
+public sealed class GmailSmtpInvitationService(
+    IOptions<EmailOptions> options,
+    IWebHostEnvironment environment)
 {
     private readonly EmailOptions _options = options.Value;
+    private readonly string _outingRulesImagePath = Path.Combine(
+        environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"),
+        "img",
+        "outing-rules.jpg");
 
     public async Task SendAsync(
         OmsEvent outing,
@@ -31,6 +37,8 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
         using var qrCodeData = qrGenerator.CreateQrCode(token, QRCodeGenerator.ECCLevel.Q);
         var qrBytes = new PngByteQRCode(qrCodeData).GetGraphic(8);
         using var qrStream = new MemoryStream(qrBytes);
+        using var rulesImageStream = File.OpenRead(_outingRulesImagePath);
+        using var rulesAttachmentStream = File.OpenRead(_outingRulesImagePath);
         using var message = new MailMessage
         {
             From = new MailAddress(_options.Username, _options.SenderName),
@@ -39,6 +47,10 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
             IsBodyHtml = false
         };
         message.To.Add(new MailAddress(participant.Email.Trim()));
+        message.Attachments.Add(new Attachment(
+            rulesAttachmentStream,
+            "Aturan Outing ROAR 30.jpg",
+            "image/jpeg"));
 
         var htmlView = AlternateView.CreateAlternateViewFromString(
             BuildHtml(outing, participant, camp, transport, vehicle, scheduleUrl),
@@ -50,6 +62,12 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
             TransferEncoding = System.Net.Mime.TransferEncoding.Base64
         };
         htmlView.LinkedResources.Add(qrResource);
+        var rulesImageResource = new LinkedResource(rulesImageStream, "image/jpeg")
+        {
+            ContentId = "outingRules",
+            TransferEncoding = System.Net.Mime.TransferEncoding.Base64
+        };
+        htmlView.LinkedResources.Add(rulesImageResource);
         message.AlternateViews.Add(htmlView);
 
         using var client = new SmtpClient(_options.Host, _options.Port)
@@ -89,6 +107,7 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
         "Kado:\r\n" +
         "- Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000 (tanpa batas maksimal).\r\n" +
         "- Kado bukan berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat.\r\n\r\n" +
+        "Panduan Do & Don'ts ROAR 30 juga dilampirkan pada email ini dalam format JPEG.\r\n\r\n" +
         $"Lihat rundown kegiatan: {scheduleUrl}\r\n\r\n" +
         "Tunjukkan QR Code pada email ini kepada panitia saat check-in dan check-out.";
 
@@ -131,6 +150,10 @@ public sealed class GmailSmtpInvitationService(IOptions<EmailOptions> options)
         "<br><br><strong style=\"color:#24324b\">Kado</strong><br>" +
         "Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000, tanpa batas maksimal. Kado tidak boleh berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat." +
         "</td></tr></table></td></tr>" +
+        "<tr><td style=\"padding:0 32px 18px\">" +
+        "<p style=\"font-size:13px;font-weight:bold;color:#24324b;margin:0 0 10px\">Panduan lengkap Do &amp; Don’ts kegiatan:</p>" +
+        "<img src=\"cid:outingRules\" alt=\"Panduan Do & Don’ts ROAR 30: keselamatan, saling menghormati, disiplin, partisipasi positif, pelaporan risiko, serta larangan narkoba dan alkohol, bullying, tindakan berbahaya, dan pelanggaran privasi.\" width=\"536\" style=\"display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:8px\">" +
+        "</td></tr>" +
         "<tr><td align=\"center\" style=\"padding:18px 32px 28px\">" +
         "<div style=\"font-size:14px;font-weight:bold;color:#24324b\">QR Code Peserta</div>" +
         "<p style=\"font-size:13px;line-height:1.6;color:#64748b;margin:6px 0 14px\">Tunjukkan QR ini kepada panitia saat check-in dan check-out</p>" +

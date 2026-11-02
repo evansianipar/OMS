@@ -15,6 +15,26 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<OmsAuthOptions>(builder.Configuration.GetSection("OmsAuth"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+var rundownOrigin = builder.Configuration["OmsPublic:RundownOrigin"];
+if (!string.IsNullOrWhiteSpace(rundownOrigin))
+{
+    if (!Uri.TryCreate(rundownOrigin, UriKind.Absolute, out var rundownOriginUri) ||
+        rundownOriginUri.Scheme is not ("http" or "https") ||
+        rundownOriginUri.AbsolutePath != "/" ||
+        !string.IsNullOrEmpty(rundownOriginUri.Query) ||
+        !string.IsNullOrEmpty(rundownOriginUri.Fragment) ||
+        !string.IsNullOrEmpty(rundownOriginUri.UserInfo))
+        throw new InvalidOperationException(
+            "OmsPublic:RundownOrigin harus berupa origin saja, misalnya https://username.github.io.");
+    if (builder.Environment.IsProduction() && rundownOriginUri.Scheme != Uri.UriSchemeHttps)
+        throw new InvalidOperationException("OmsPublic:RundownOrigin wajib menggunakan HTTPS di Production.");
+    rundownOrigin = rundownOriginUri.GetLeftPart(UriPartial.Authority);
+}
+builder.Services.AddCors(options => options.AddPolicy("GitHubPagesRundown", policy =>
+{
+    if (!string.IsNullOrWhiteSpace(rundownOrigin))
+        policy.WithOrigins(rundownOrigin).AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddDataProtection().SetApplicationName("OMS");
 builder.Services.AddSingleton<IXmlRepository, OmsDataProtectionXmlRepository>();
 builder.Services.AddOptions<KeyManagementOptions>()
@@ -142,6 +162,7 @@ app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseCors();
 app.UseRateLimiter();
 app.Use(async (context, next) =>
 {

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101b36">
+    <meta name="description" content="Rundown kegiatan OMS dengan pembaruan agenda secara langsung mengikuti waktu WIB.">
+    <title>Rundown Kegiatan - OMS</title>
+    <link rel="stylesheet" href="./assets/event-schedule.css">
+</head>
+<body>
+    <main class="schedule-page" id="schedule-page">
+        <header class="schedule-header">
+            <a class="schedule-brand" href="./" aria-label="Outing Management System">
+                <img class="schedule-logo" src="./assets/LogoWOMF.png" alt="WOM Finance">
+                <span><strong>OMS</strong><small>OUTING MANAGEMENT SYSTEM</small></span>
+            </a>
+            <div class="live-clock"><span class="clock-dot"></span><span id="wib-clock">Memuat waktu WIB</span><span>JAKARTA</span></div>
+        </header>
+
+        <section class="event-hero">
+            <div class="hero-glow"></div>
+            <div class="hero-content">
+                <span class="eyebrow">RUNDOWN KEGIATAN</span>
+                <h1 id="event-name">Memuat kegiatan...</h1>
+                <div class="event-meta">
+                    <span id="event-dates"></span>
+                    <span id="event-location"></span>
+                </div>
+            </div>
+        </section>
+
+        <section id="participant-qr-card" class="participant-qr-card" hidden aria-live="polite">
+            <div class="participant-qr-copy">
+                <span class="eyebrow">QR CODE PESERTA</span>
+                <h2 id="participant-name"></h2>
+                <p><span id="participant-number"></span> · Tunjukkan QR ini kepada panitia untuk check-in dan check-out</p>
+                <div id="participant-qr-error" class="participant-qr-error" hidden></div>
+            </div>
+            <img id="participant-qr-image" class="participant-qr-image" alt="QR Code peserta">
+        </section>
+
+        <section class="now-card" aria-live="polite">
+            <div class="now-icon" id="now-icon">◷</div>
+            <div class="now-copy">
+                <span class="now-label" id="now-label">JADWAL SAAT INI</span>
+                <h2 id="now-activity">Memuat rundown...</h2>
+                <p id="now-detail">Jadwal akan dimuat dari OMS.</p>
+            </div>
+            <span class="live-badge" id="live-badge"><i></i><span>LIVE WIB</span></span>
+        </section>
+
+        <p id="page-error" class="page-error" role="alert" hidden></p>
+
+        <section class="timeline-section">
+            <div id="schedule-timeline" class="schedule-timeline"></div>
+        </section>
+
+        <footer class="schedule-footer">
+            <span id="updated-at">Sinkronisasi jadwal melalui OMS</span>
+            <span class="footer-brand">OUTING MANAGEMENT SYSTEM</span>
+        </footer>
+    </main>
+    <script src="./config.js"></script>
+    <script src="./assets/event-schedule.js"></script>
+</body>
+</html>

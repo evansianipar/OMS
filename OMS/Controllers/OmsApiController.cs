@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OMS.Models;
@@ -16,6 +17,7 @@ public sealed class OmsApiController(
     IHostEnvironment environment) : ControllerBase
 {
     [AllowAnonymous]
+    [EnableCors("GitHubPagesRundown")]
     [HttpGet("/api/public/events/{eventId}/schedule")]
     public async Task<IActionResult> PublicSchedule(string eventId, CancellationToken cancellationToken)
     {
@@ -25,6 +27,7 @@ public sealed class OmsApiController(
     }
 
     [AllowAnonymous]
+    [EnableCors("GitHubPagesRundown")]
     [HttpPost("/api/public/events/{eventId}/participant-qr")]
     public async Task<IActionResult> PublicParticipantQr(
         string eventId,
@@ -335,12 +338,15 @@ public sealed class OmsApiController(
         {
             if (environment.IsProduction())
                 throw new InvalidOperationException(
-                    "Atur OmsPublic__BaseUrl dengan domain publik OMS agar tautan rundown di email benar.");
+                    "Atur OmsPublic__BaseUrl dengan URL GitHub Pages rundown agar tautan rundown di email benar.");
             baseUri = new Uri($"{Request.Scheme}://{Request.Host}/", UriKind.Absolute);
         }
 
         var baseAddress = new Uri(baseUri.ToString().TrimEnd('/') + "/", UriKind.Absolute);
-        return new Uri(baseAddress, $"event/{Uri.EscapeDataString(eventId)}/schedule")
-            .ToString();
+        var pageUrl = new Uri(baseAddress, ".");
+        return new UriBuilder(pageUrl)
+        {
+            Query = $"eventId={Uri.EscapeDataString(eventId)}"
+        }.Uri.ToString();
     }
 }

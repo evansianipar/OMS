@@ -70,7 +70,7 @@
         const startDate = dateValue(event.startDate);
         const endDate = dateValue(event.endDate);
         document.getElementById('event-dates').textContent = startDate
-            ? `◷ ${dateFormatter.format(startDate)}${endDate && dateFormatter.format(endDate) !== dateFormatter.format(startDate) ? ` — ${dateFormatter.format(endDate)}` : ''}`
+            ? `◷ ${dateFormatter.format(startDate)}${endDate && dateFormatter.format(endDate) !== dateFormatter.format(startDate) ? ` - ${dateFormatter.format(endDate)}` : ''}`
             : '';
         document.getElementById('event-location').textContent = event.location ? `⌖ ${event.location}` : '';
 
@@ -132,7 +132,7 @@
                     document.createElement('b'),
                     document.createTextNode(` ${timeFormatter.format(item.end)} `)
                 );
-                time.querySelector('b').textContent = '—';
+                time.querySelector('b').textContent = '-';
                 const zone = document.createElement('small');
                 zone.textContent = 'WIB';
                 time.append(zone);

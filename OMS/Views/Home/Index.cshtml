@@ -282,7 +282,7 @@
                                     <tr>
                                         <td class="text-nowrap">@item.StartTime.Replace("T", " ") – @item.EndTime.Replace("T", " ")</td>
                                         <td><strong>@item.SessionName</strong>@if (!string.IsNullOrWhiteSpace(item.Description)) { <div class="small text-secondary">@item.Description</div> }</td>
-                                        <td>@(string.IsNullOrWhiteSpace(item.Location) ? "—" : item.Location)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.Location) ? "-" : item.Location)</td>
                                         <td><span class="badge @(item.Status == "Active" ? "text-bg-success" : "text-bg-secondary")">@(item.Status == "Active" ? "Ditampilkan" : "Disembunyikan")</span></td>
                                         <td><div class="d-flex gap-2">
                                             <button class="btn btn-sm btn-outline-primary" type="button"

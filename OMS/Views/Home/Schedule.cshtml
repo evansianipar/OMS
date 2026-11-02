@@ -31,7 +31,7 @@
                 <span class="eyebrow">RUNDOWN KEGIATAN</span>
                 <h1>@Model.Event.EventName</h1>
                 <div class="event-meta">
-                    <span>◷ @Model.Event.StartDate@(string.IsNullOrWhiteSpace(Model.Event.EndDate) || Model.Event.EndDate == Model.Event.StartDate ? "" : $" — {Model.Event.EndDate}")</span>
+                    <span>◷ @Model.Event.StartDate@(string.IsNullOrWhiteSpace(Model.Event.EndDate) || Model.Event.EndDate == Model.Event.StartDate ? "" : $" - {Model.Event.EndDate}")</span>
                     @if (!string.IsNullOrWhiteSpace(Model.Event.Location))
                     {
                         <span>⌖ @Model.Event.Location</span>
@@ -111,7 +111,7 @@
                                         <span class="timeline-rail"><span class="timeline-icon" aria-hidden="true">@icon</span></span>
                                         <div class="activity-card">
                                             <div class="activity-topline">
-                                                <span class="activity-time">@item.StartTime.ToString("HH:mm") <b>—</b> @item.EndTime.ToString("HH:mm") <small>WIB</small></span>
+                                                <span class="activity-time">@item.StartTime.ToString("HH:mm") <b>-</b> @item.EndTime.ToString("HH:mm") <small>WIB</small></span>
                                                 <span class="activity-state">@(isCurrent ? "SEDANG BERLANGSUNG" : isDone ? "SELESAI" : "AKAN DATANG")</span>
                                             </div>
                                             <h3>@item.SessionName</h3>

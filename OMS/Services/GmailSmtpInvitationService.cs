@@ -144,11 +144,13 @@ public sealed class GmailSmtpInvitationService(
         "<tr><td style=\"padding:8px 32px 18px\">" +
         "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background-color:#f5efe5;border:1px solid #d9c7ad;border-radius:8px\">" +
         "<tr><td style=\"padding:18px 20px;font-size:13px;line-height:1.7;color:#52627a\">" +
-        "<div style=\"font-size:15px;font-weight:bold;color:#6f4e37;margin-bottom:8px\">Informasi outfit dan kado</div>" +
+        "<div style=\"font-size:15px;font-weight:bold;color:#6f4e37;margin-bottom:8px\">INFO</div>" +
         "<strong style=\"color:#24324b\">Dress code</strong><br>" +
         "Day 1: POLO WOM<br>Gala dinner: bebas<br>Day 2: warna putih<br>Celana: bebas" +
         "<br><br><strong style=\"color:#24324b\">Kado</strong><br>" +
         "Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000, tanpa batas maksimal. Kado tidak boleh berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat." +
+        "<br><br><strong style=\"color:#24324b\">Tumbler</strong><br>" +
+        "Setiap peserta wajib membawa tumbler sebagai wadah untuk minuman." +
         "</td></tr></table></td></tr>" +
         "<tr><td style=\"padding:0 32px 18px\">" +
         "<p style=\"font-size:13px;font-weight:bold;color:#24324b;margin:0 0 10px\">Panduan lengkap Do &amp; Don’ts kegiatan:</p>" +

@@ -146,7 +146,7 @@ public sealed class GmailSmtpInvitationService(
         "<tr><td style=\"padding:18px 20px;font-size:13px;line-height:1.7;color:#52627a\">" +
         "<div style=\"font-size:15px;font-weight:bold;color:#6f4e37;margin-bottom:8px\">INFO</div>" +
         "<strong style=\"color:#24324b\">Dress code</strong><br>" +
-        "Day 1: POLO WOM/ Kaos POLO warna biru navy<br>Gala dinner: bebas<br>Day 2: warna putih<br>Celana: bebas" +
+        "Day 1: POLO WOM/ Kaos POLO warna biru navy (Jika tidak memiliki kaos POLO WOM)<br>Gala dinner: bebas<br>Day 2: warna putih<br>Celana: bebas" +
         "<br><br><strong style=\"color:#24324b\">Kado</strong><br>" +
         "Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000, tanpa batas maksimal. Kado tidak boleh berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat." +
         "<br><br><strong style=\"color:#24324b\">Tumbler</strong><br>" +

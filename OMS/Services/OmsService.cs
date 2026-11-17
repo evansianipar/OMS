@@ -489,7 +489,7 @@ public sealed class OmsService(
                 row is null ? string.Empty : Get(row, "CheckOutTime"),
                 row is null ? string.Empty : Get(row, "CheckInMethod"),
                 row is null ? string.Empty : Get(row, "CheckOutMethod")
-            ]));
+            ], firstFieldAsText: true));
         }
         return "\uFEFF" + string.Join("\r\n", lines);
     }
@@ -1251,8 +1251,15 @@ public sealed class OmsService(
     private static string Cell(IList<object> row, int index) =>
         index >= 0 && index < row.Count ? Convert.ToString(row[index]) ?? string.Empty : string.Empty;
 
-    private static string CsvRow(IEnumerable<string> fields) =>
-        string.Join(",", fields.Select(CsvCell));
+    private static string CsvRow(IEnumerable<string> fields, bool firstFieldAsText = false) =>
+        string.Join(",", fields.Select((field, index) =>
+            firstFieldAsText && index == 0 ? CsvTextCell(field) : CsvCell(field)));
+
+    private static string CsvTextCell(string? value)
+    {
+        var formula = "=\"" + (value ?? string.Empty).Replace("\"", "\"\"") + "\"";
+        return "\"" + formula.Replace("\"", "\"\"") + "\"";
+    }
 
     private static string CsvCell(string? value)
     {

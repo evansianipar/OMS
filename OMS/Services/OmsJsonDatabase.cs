@@ -423,7 +423,8 @@ public sealed class OmsJsonDatabase
             SetRowValue(table, row, "Camp", request.Camp?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Transport", request.Transport?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Vehicle", request.Vehicle?.Trim() ?? string.Empty);
-            SetRowValue(table, row, "GroupNumber", request.GroupNumber?.Trim() ?? string.Empty);
+            if (request.GroupNumber is not null)
+                SetRowValue(table, row, "GroupNumber", request.GroupNumber.Trim());
             return savedParticipantId;
         }, write: true, cancellationToken);
     }

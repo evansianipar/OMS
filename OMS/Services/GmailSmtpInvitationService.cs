@@ -42,14 +42,14 @@ public sealed class GmailSmtpInvitationService(
         using var message = new MailMessage
         {
             From = new MailAddress(_options.Username, _options.SenderName),
-            Subject = $"Undangan {outing.EventName} - QR Check-in dan Check-out",
+            Subject = "Official Invitation - IT DIVISION WOM ROAR30 - 2026",
             Body = BuildPlainText(outing, participant, camp, transport, vehicle, scheduleUrl),
             IsBodyHtml = false
         };
         message.To.Add(new MailAddress(participant.Email.Trim()));
         message.Attachments.Add(new Attachment(
             rulesAttachmentStream,
-            "Aturan Outing ROAR 30.jpg",
+            "Aturan Outing ROAR30.jpg",
             "image/jpeg"));
 
         var htmlView = AlternateView.CreateAlternateViewFromString(
@@ -89,12 +89,11 @@ public sealed class GmailSmtpInvitationService(
         string transport,
         string vehicle,
         string scheduleUrl) =>
-        $"Yth. {participant.FullName},\r\n\r\n" +
+        $"Halo {participant.FullName},\r\n\r\n" +
         $"Anda terdaftar pada kegiatan {outing.EventName}.\r\n" +
         $"Tanggal: {FormatDate(outing.StartDate)}\r\n" +
         $"Lokasi: {Fallback(outing.Location, "Akan diinformasikan")}\r\n" +
         $"Kode peserta: {participant.EmployeeNumber}\r\n" +
-        $"Group number: {Fallback(participant.GroupNumber, "Belum ditentukan")}\r\n" +
         $"Camp / nomor kamar: {Fallback(camp, "Belum ditentukan")}\r\n" +
         $"Transportasi: {Fallback(transport, "Belum ditentukan")}\r\n" +
         $"Nomor kendaraan: {Fallback(vehicle, "-")}\r\n\r\n" +
@@ -107,7 +106,7 @@ public sealed class GmailSmtpInvitationService(
         "Kado:\r\n" +
         "- Setiap peserta wajib menyiapkan kado dengan harga minimal Rp 50.000 (tanpa batas maksimal).\r\n" +
         "- Kado bukan berupa makanan atau minuman dan wajib dibungkus dengan kertas warna cokelat.\r\n\r\n" +
-        "Panduan Do & Don'ts ROAR 30 juga dilampirkan pada email ini dalam format JPEG.\r\n\r\n" +
+        "Panduan Do & Don'ts ROAR30 juga dilampirkan pada email ini dalam format JPEG.\r\n\r\n" +
         $"Lihat rundown kegiatan: {scheduleUrl}\r\n\r\n" +
         "Tunjukkan QR Code pada email ini kepada panitia saat check-in dan check-out.";
 
@@ -122,21 +121,21 @@ public sealed class GmailSmtpInvitationService(
         "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background-color:#f2f5fa;padding:28px 12px\">" +
         "<tr><td align=\"center\">" +
         "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:100%;max-width:600px;background-color:#ffffff;border:1px solid #e3e9f2;border-radius:12px;overflow:hidden\">" +
-        "<tr><td bgcolor=\"#2457a7\" style=\"padding:26px 32px;color:#ffffff\">" +
+        "<tr><td bgcolor=\"#2457a7\" style=\"padding:12px 16px;color:#ffffff\">" +
         "<div style=\"font-size:12px;letter-spacing:1.6px;font-weight:bold;color:#dbeafe\">OUTING MANAGEMENT SYSTEM</div>" +
-        "<div style=\"font-size:24px;line-height:1.3;font-weight:bold;margin-top:10px\">Undangan Kegiatan</div>" +
+        "<div style=\"font-size:22px;line-height:1.3;font-weight:bold;margin-top:9px\">Official Event Invitation</div>" +
+        "<div style=\"font-size:11px;color:#ffffff;margin-top:7px\">WOM ROAR30 &middot; Employee Outing 2026</div>" +
         "</td></tr>" +
         "<tr><td style=\"padding:28px 32px 12px\">" +
         $"<p style=\"font-size:16px;margin:0 0 12px\">Halo <strong>{Html(participant.FullName)}</strong>,</p>" +
         $"<p style=\"font-size:14px;line-height:1.7;color:#52627a;margin:0 0 22px\">Anda telah terdaftar sebagai peserta kegiatan <strong style=\"color:#24324b\">{Html(outing.EventName)}</strong>. Berikut detail kegiatan Anda:</p>" +
         "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background-color:#f7f9fc;border:1px solid #e7edf5;border-radius:8px\">" +
-        DetailRow("Tanggal", FormatDate(outing.StartDate)) +
+        DetailRow("Mulai", FormatDate(outing.StartDate)) +
         (string.IsNullOrWhiteSpace(outing.EndDate) || outing.EndDate == outing.StartDate
             ? string.Empty
-            : DetailRow("Sampai", FormatDate(outing.EndDate))) +
+            : DetailRow("Hingga", FormatDate(outing.EndDate))) +
         DetailRow("Lokasi", Fallback(outing.Location, "Akan diinformasikan")) +
         DetailRow("Kode peserta", participant.EmployeeNumber) +
-        DetailRow("Group number", Fallback(participant.GroupNumber, "Belum ditentukan")) +
         DetailRow("Camp / nomor kamar", Fallback(camp, "Belum ditentukan")) +
         DetailRow("Transportasi", Fallback(transport, "Belum ditentukan")) +
         DetailRow("Nomor kendaraan", Fallback(vehicle, "-"), last: true) +
@@ -154,7 +153,7 @@ public sealed class GmailSmtpInvitationService(
         "</td></tr></table></td></tr>" +
         "<tr><td style=\"padding:0 32px 18px\">" +
         "<p style=\"font-size:13px;font-weight:bold;color:#24324b;margin:0 0 10px\">Panduan lengkap Do &amp; Don’ts kegiatan:</p>" +
-        "<img src=\"cid:outingRules\" alt=\"Panduan Do & Don’ts ROAR 30: keselamatan, saling menghormati, disiplin, partisipasi positif, pelaporan risiko, serta larangan narkoba dan alkohol, bullying, tindakan berbahaya, dan pelanggaran privasi.\" width=\"536\" style=\"display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:8px\">" +
+        "<img src=\"cid:outingRules\" alt=\"Panduan Do & Don’ts ROAR30: keselamatan, saling menghormati, disiplin, partisipasi positif, pelaporan risiko, serta larangan narkoba dan alkohol, bullying, tindakan berbahaya, dan pelanggaran privasi.\" width=\"536\" style=\"display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:8px\">" +
         "</td></tr>" +
         "<tr><td align=\"center\" style=\"padding:18px 32px 28px\">" +
         "<div style=\"font-size:14px;font-weight:bold;color:#24324b\">QR Code Peserta</div>" +
@@ -169,7 +168,7 @@ public sealed class GmailSmtpInvitationService(
         "<p style=\"font-size:12px;color:#64748b;margin:16px 0 0\">QR Code ini bersifat pribadi. Jangan bagikan kepada orang lain.</p>" +
         "</td></tr>" +
         "<tr><td style=\"padding:18px 32px;background-color:#f7f9fc;border-top:1px solid #e7edf5;font-size:12px;line-height:1.6;color:#64748b\">" +
-        "Salam hangat,<br><strong style=\"color:#24324b\">Panitia Outing ROAR 30 </strong>" +
+        "Salam hangat,<br><strong style=\"color:#24324b\">Panitia Outing ROARR30 </strong>" +
         "</td></tr></table></td></tr></table></body></html>";
 
     private static string DetailRow(string label, string value, bool last = false) =>

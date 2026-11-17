@@ -398,7 +398,6 @@ public sealed class OmsService(
                 item.Camp,
                 item.Transport,
                 item.Vehicle,
-                item.GroupNumber,
                 item.IsActive))
             .ToList();
         return new ParticipantPage(results.Count, page, pageSize, items);

@@ -68,7 +68,6 @@ public sealed record ParticipantListItem(
     string Camp,
     string Transport,
     string Vehicle,
-    string GroupNumber,
     bool IsActive);
 
 public sealed record ParticipantRequest(

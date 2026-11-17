@@ -45,6 +45,38 @@
         errorBanner.hidden = false;
     }
 
+    function appendTextWithLinks(element, text) {
+        const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+        let cursor = 0;
+        for (const match of text.matchAll(urlPattern)) {
+            const rawUrl = match[0];
+            let url = rawUrl;
+            while (/[.,!?;:)\]}]$/.test(url)) url = url.slice(0, -1);
+            if (!url) continue;
+
+            const start = match.index;
+            element.append(document.createTextNode(text.slice(cursor, start)));
+            try {
+                const parsed = new URL(url);
+                if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+                    throw new Error('Unsupported URL protocol');
+                const link = document.createElement('a');
+                link.href = parsed.href;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = url;
+                link.setAttribute('aria-label', `Buka tautan ${url}`);
+                element.append(link);
+            } catch {
+                element.append(document.createTextNode(url));
+            }
+            if (url.length < rawUrl.length)
+                element.append(document.createTextNode(rawUrl.slice(url.length)));
+            cursor = start + rawUrl.length;
+        }
+        element.append(document.createTextNode(text.slice(cursor)));
+    }
+
     function dateValue(value) {
         const parsed = new Date(value);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -146,7 +178,7 @@
                 if (item.description) {
                     const description = document.createElement('p');
                     description.className = 'activity-description';
-                    description.textContent = item.description;
+                    appendTextWithLinks(description, item.description);
                     card.append(description);
                 }
                 if (item.location) {

@@ -403,6 +403,34 @@ public sealed class OmsService(
         return new ParticipantPage(results.Count, page, pageSize, items);
     }
 
+    public async Task<string> ExportParticipantsCsvAsync(
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        await GetEventAsync(eventId, cancellationToken);
+        var participants = (await GetParticipantsAsync(eventId, cancellationToken))
+            .OrderBy(item => item.FullName, StringComparer.OrdinalIgnoreCase);
+        var lines = new List<string>
+        {
+            CsvRow([
+                "NIK", "EMPLOYEE_NAME", "EMPLOYEE_TYPE", "POSITION_NAME", "ORG_NAME",
+                "GENDER", "EMAIL", "CAMP", "TRANSPORT", "MOBIL", "GROUP_NUMBER", "IS_ACTIVE"
+            ])
+        };
+
+        foreach (var participant in participants)
+        {
+            lines.Add(CsvRow([
+                participant.EmployeeNumber, participant.FullName, participant.EmployeeType,
+                participant.PositionName, participant.Department, participant.Gender,
+                participant.Email, participant.Camp, participant.Transport, participant.Vehicle,
+                participant.GroupNumber, participant.IsActive ? "TRUE" : "FALSE"
+            ], firstFieldAsText: true));
+        }
+
+        return string.Join("\r\n", lines) + "\r\n";
+    }
+
     public async Task<QrIssueResponse> IssueQrAsync(
         string eventId,
         string participantId,

@@ -532,6 +532,11 @@
         } catch (error) { notify(error.message, 'error'); }
     }
 
+    function exportParticipantsCsv() {
+        if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
+        window.location.assign(`/api/oms/participants/export.csv?eventId=${encodeURIComponent(eventId())}`);
+    }
+
     function parseCsv(text) {
         const rows = [];
         let row = [];
@@ -911,6 +916,7 @@
         loadParticipants();
     });
     document.getElementById('delete-all-participants')?.addEventListener('click', deleteAllParticipants);
+    document.getElementById('export-participants')?.addEventListener('click', exportParticipantsCsv);
     document.getElementById('add-participant')?.addEventListener('click', () => showParticipantForm());
     document.getElementById('participant-form')?.addEventListener('submit', saveParticipant);
     document.getElementById('participant-cancel')?.addEventListener('click', () => {

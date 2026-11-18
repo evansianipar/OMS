@@ -141,6 +141,19 @@ public sealed class OmsApiController(
         return Ok(await oms.ListParticipantsAsync(eventId, query, page, pageSize, cancellationToken));
     }
 
+    [HttpGet("participants/export.csv")]
+    public async Task<IActionResult> ExportParticipants(
+        [FromQuery] string eventId,
+        CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN", "REGISTRATION"], cancellationToken);
+        var csv = await oms.ExportParticipantsCsvAsync(eventId, cancellationToken);
+        var content = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(csv))
+            .ToArray();
+        return File(content, "text/csv; charset=utf-8", "data-peserta.csv");
+    }
+
     [HttpPost("participants")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateParticipant(

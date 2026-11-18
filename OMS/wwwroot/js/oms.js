@@ -585,7 +585,7 @@
                 method: 'POST',
                 body: JSON.stringify({ headers, rows })
             });
-            notify(`Master karyawan tersimpan: ${result.imported} baris. Nilai QR_CODE diubah menjadi hash sebelum disimpan.`);
+            notify(`Master karyawan tersimpan: ${result.imported} baris. QR_CODE di-hash sekali untuk penyimpanan; impor peserta memakai hash tersebut tanpa meng-hash ulang.`);
         } catch (error) {
             notify(error.message, 'error');
         } finally {

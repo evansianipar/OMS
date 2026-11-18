@@ -921,7 +921,10 @@ public sealed class OmsService(
         string checkedBy,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length > 200)
+        var normalizedToken = token?.Trim() ?? string.Empty;
+        if (normalizedToken.Length == 0 ||
+            normalizedToken.Length > 200 ||
+            normalizedToken.Any(char.IsWhiteSpace))
             return new ScanResponse("INVALID_QR", "QR TIDAK VALID");
 
         await AttendanceLock.WaitAsync(cancellationToken);
@@ -933,7 +936,7 @@ public sealed class OmsService(
             var sessionError = await ValidateSessionAsync(eventId, sessionId, cancellationToken);
             if (sessionError is not null) return new ScanResponse("SESSION_INACTIVE", sessionError);
 
-            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+            var hash = QrTokenCredential.Hash(normalizedToken);
             var participants = await GetParticipantsAsync(eventId, cancellationToken);
             var participant = participants.FirstOrDefault(item => item.TokenHash.Equals(hash, StringComparison.Ordinal));
             if (participant is null) return new ScanResponse("INVALID_QR", "QR TIDAK VALID");

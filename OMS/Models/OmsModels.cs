@@ -82,7 +82,8 @@ public sealed record ParticipantRequest(
     string? Transport,
     string? Vehicle,
     string? GroupNumber,
-    bool IsActive = true);
+    bool IsActive = true,
+    string? QrCode = null);
 
 public sealed record AttendanceReportRow(
     string EmployeeNumber,
@@ -112,7 +113,12 @@ public sealed record InvitationBatchRequest(string EventId, int Offset = 0, int 
 
 public sealed record IndividualInvitationRequest(string EventId, string ParticipantId);
 
-public sealed record ImportSummary(int Imported, int Existing, int Invalid, int DuplicateSource);
+public sealed record ImportSummary(
+    int Imported,
+    int Existing,
+    int Invalid,
+    int DuplicateSource,
+    int QrCodesImported = 0);
 
 public sealed record EventCreateRequest(
     string EventCode,

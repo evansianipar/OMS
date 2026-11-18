@@ -366,6 +366,9 @@ public sealed class OmsJsonDatabase
             throw new InvalidOperationException("Nama karyawan wajib diisi.");
         if (email.Length > 254 || (email.Length > 0 && !System.Net.Mail.MailAddress.TryCreate(email, out _)))
             throw new InvalidOperationException("Format email tidak valid.");
+        var qrTokenHash = string.IsNullOrWhiteSpace(request.QrCode)
+            ? null
+            : QrTokenCredential.Hash(request.QrCode);
         var fields = new Dictionary<string, (string? Value, int MaximumLength)>
         {
             ["NIK"] = (employeeNumber, 100),
@@ -408,6 +411,17 @@ public sealed class OmsJsonDatabase
                     candidate[employeeColumn].Equals(employeeNumber, StringComparison.OrdinalIgnoreCase) &&
                     !ReferenceEquals(candidate, row)))
                 throw new InvalidOperationException($"NIK {employeeNumber} sudah terdaftar pada kegiatan ini.");
+            if (qrTokenHash is not null)
+            {
+                var qrHashColumn = RequireColumn(table, "QrTokenHash");
+                if (table.Rows.Any(candidate =>
+                        eventColumn < candidate.Count &&
+                        qrHashColumn < candidate.Count &&
+                        candidate[eventColumn].Equals(eventId, StringComparison.Ordinal) &&
+                        candidate[qrHashColumn].Equals(qrTokenHash, StringComparison.Ordinal) &&
+                        !ReferenceEquals(candidate, row)))
+                    throw new InvalidOperationException("QR_CODE sudah terhubung ke peserta lain pada kegiatan ini.");
+            }
 
             var now = DateTimeOffset.UtcNow.ToString("O");
             var savedParticipantId = participantId ?? Guid.NewGuid().ToString();
@@ -436,6 +450,8 @@ public sealed class OmsJsonDatabase
             SetRowValue(table, row, "Camp", request.Camp?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Transport", request.Transport?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Vehicle", request.Vehicle?.Trim() ?? string.Empty);
+            if (qrTokenHash is not null)
+                SetRowValue(table, row, "QrTokenHash", qrTokenHash);
             if (request.GroupNumber is not null)
                 SetRowValue(table, row, "GroupNumber", request.GroupNumber.Trim());
             return savedParticipantId;
@@ -590,13 +606,22 @@ public sealed class OmsJsonDatabase
             !normalized.Overlaps(["EMPLOYEENAME", "FULLNAME", "NAMA"]))
             throw new InvalidOperationException("Header master harus memuat kolom NIK dan nama karyawan.");
 
+        var qrCodeIndex = headers.FindIndex(header =>
+            NormalizeHeader(header) is "QRCODE" or "PARTICIPANTQRCODE");
+        if (qrCodeIndex >= 0)
+            headers[qrCodeIndex] = "QR_CODE_HASH";
+
         await InDatabaseAsync(document =>
         {
             var table = GetTable(document, "List All EMP LENGKAP");
             table.Headers = headers;
             table.Rows = request.Rows
                 .Select(source => headers.Select((_, index) =>
-                    index < source.Count ? source[index].Trim() : string.Empty).ToList())
+                {
+                    var value = index < source.Count ? source[index].Trim() : string.Empty;
+                    if (index != qrCodeIndex || string.IsNullOrWhiteSpace(value)) return value;
+                    return QrTokenCredential.Hash(value);
+                }).ToList())
                 .ToList();
             return true;
         }, write: true, cancellationToken);

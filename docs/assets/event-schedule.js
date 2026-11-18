@@ -1,6 +1,5 @@
 (() => {
     const eventId = new URLSearchParams(window.location.search).get('eventId');
-    const apiBase = String(window.OMS_API_BASE_URL ?? '').replace(/\/+$/, '');
     const clock = document.getElementById('wib-clock');
     const updatedAt = document.getElementById('updated-at');
     const errorBanner = document.getElementById('page-error');
@@ -255,7 +254,7 @@
         }
     }
 
-    async function loadParticipantQr() {
+    function loadParticipantQr() {
         const match = /^#participantQr=([A-Za-z0-9_-]+)$/.exec(window.location.hash);
         if (!match) return;
 
@@ -265,33 +264,17 @@
         const error = document.getElementById('participant-qr-error');
         const image = document.getElementById('participant-qr-image');
         card.hidden = false;
-        if (!eventId || !apiBase) {
-            error.textContent = 'Halaman rundown belum dikonfigurasi untuk memvalidasi QR. Hubungi panitia.';
-            error.hidden = false;
-            image.hidden = true;
-            return;
-        }
 
         try {
-            const response = await fetch(`${apiBase}/api/public/events/${encodeURIComponent(eventId)}/participant-qr`, {
-                method: 'POST',
-                cache: 'no-store',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                body: JSON.stringify({ token })
-            });
-            if (!response.ok)
-                throw new Error('QR peserta tidak aktif. Minta panitia mengirim ulang undangan terbaru.');
-
-            const participant = await response.json();
-            document.getElementById('participant-name').textContent = participant.fullName;
-            document.getElementById('participant-number').textContent = participant.employeeNumber;
-            image.src = `data:image/png;base64,${participant.qrPngBase64}`;
+            const qr = qrcode(0, 'Q');
+            qr.addData(token);
+            qr.make();
+            image.src = qr.createDataURL(8, 4);
             image.hidden = false;
+            error.hidden = true;
         } catch {
-            error.textContent = 'QR tidak dapat dimuat. Periksa koneksi atau minta panitia mengirim ulang undangan terbaru.';
+            error.textContent = 'QR tidak dapat dibuat dari tautan ini. Minta panitia mengirim ulang undangan.';
             error.hidden = false;
-            document.getElementById('participant-name').textContent = 'QR tidak tersedia';
-            document.getElementById('participant-number').textContent = '';
             image.hidden = true;
         }
     }

@@ -392,6 +392,7 @@
         document.getElementById('participant-camp').value = participant?.camp ?? '';
         document.getElementById('participant-transport').value = participant?.transport ?? '';
         document.getElementById('participant-vehicle').value = participant?.vehicle ?? '';
+        document.getElementById('participant-qr-code').value = '';
         document.getElementById('participant-status').value = String(participant?.isActive ?? true);
         document.getElementById('participant-form-title').textContent = participant ? 'Edit data peserta' : 'Tambah peserta';
         document.getElementById('participant-save').textContent = participant ? 'Simpan perubahan' : 'Simpan peserta';
@@ -420,6 +421,7 @@
             camp: document.getElementById('participant-camp').value.trim(),
             transport: document.getElementById('participant-transport').value.trim(),
             vehicle: document.getElementById('participant-vehicle').value.trim(),
+            qrCode: document.getElementById('participant-qr-code').value.trim(),
             isActive: document.getElementById('participant-status').value === 'true'
         };
         const button = document.getElementById('participant-save');
@@ -521,13 +523,13 @@
 
     async function importMaster() {
         if (!eventId()) return notify('Pilih kegiatan terlebih dahulu', 'warning');
-        if (!confirm('Impor karyawan baru dari master CSV yang sudah diunggah? Nomor pegawai yang sudah terdaftar tidak akan diduplikasi')) return;
+        if (!confirm('Impor peserta dari master CSV yang sudah diunggah? Peserta yang sudah terdaftar tidak diduplikasi; QR_CODE akan dipetakan ke peserta berdasarkan NIK.')) return;
         try {
             const result = await api('/api/oms/participants/import-master', {
                 method: 'POST',
                 body: JSON.stringify({ eventId: eventId() })
             });
-            notify(`Impor selesai: ${result.imported} baru, ${result.existing} sudah terdaftar, ${result.invalid} tidak valid`);
+            notify(`Impor selesai: ${result.imported} baru, ${result.existing} sudah terdaftar, ${result.qrCodesImported || 0} QR dipetakan, ${result.invalid} tidak valid`);
             await loadParticipants();
         } catch (error) { notify(error.message, 'error'); }
     }
@@ -583,7 +585,7 @@
                 method: 'POST',
                 body: JSON.stringify({ headers, rows })
             });
-            notify(`Master karyawan tersimpan dalam database JSON: ${result.imported} baris.`);
+            notify(`Master karyawan tersimpan: ${result.imported} baris. Nilai QR_CODE diubah menjadi hash sebelum disimpan.`);
         } catch (error) {
             notify(error.message, 'error');
         } finally {

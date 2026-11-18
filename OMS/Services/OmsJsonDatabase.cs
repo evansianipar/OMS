@@ -696,7 +696,7 @@ public sealed class OmsJsonDatabase
                     Environments.Production,
                     StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(
-                    "OMS_AUTH__BOOTSTRAP_EMAIL dan OMS_AUTH__BOOTSTRAP_PASSWORD diperlukan untuk membuat superadmin pertama.");
+                        "OmsAuth__BootstrapEmail dan OmsAuth__BootstrapPassword diperlukan untuk membuat superadmin pertama.");
             return;
         }
         if (password.Length < 12)

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using OMS.Models;
 using OMS.Services;
 using QRCoder;
+using System.Text.Json;
 
 namespace OMS.Controllers;
 
@@ -24,6 +25,29 @@ public sealed class OmsApiController(
         Response.Headers.CacheControl = "no-store";
         var schedule = await oms.GetPublicEventScheduleAsync(eventId, cancellationToken);
         return schedule is null ? NotFound() : Ok(schedule);
+    }
+
+    [HttpGet("events/{eventId}/schedule/export.json")]
+    public async Task<IActionResult> ExportScheduleJson(string eventId, CancellationToken cancellationToken)
+    {
+        await oms.RequireRoleAsync(CurrentEmail(), ["SUPERADMIN", "ADMIN"], cancellationToken);
+        var schedule = await oms.GetPublicEventScheduleAsync(eventId, cancellationToken);
+        if (schedule is null) return NotFound();
+
+        var snapshot = new
+        {
+            schedule.Event,
+            schedule.Items,
+            ExportedAtWib = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7))
+        };
+        var json = JsonSerializer.SerializeToUtf8Bytes(
+            snapshot,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var safeEventId = new string(schedule.Event.EventId
+            .Where(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')
+            .ToArray());
+        Response.Headers.CacheControl = "no-store";
+        return File(json, "application/json; charset=utf-8", $"rundown-{safeEventId}.json");
     }
 
     [AllowAnonymous]

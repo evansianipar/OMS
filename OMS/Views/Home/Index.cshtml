@@ -256,8 +256,11 @@
                     var agenda = Model.ScheduleItems ?? [];
                     <article class="panel mb-4" id="schedule-management">
                         <div class="panel-heading">
-                            <div><h3>Rundown kegiatan</h3><p>Atur agenda lintas hari. Waktu menggunakan WIB (Jakarta).</p></div>
-                            <a class="btn btn-outline-primary" href="/event/@selectedEvent.EventId/schedule" target="_blank" rel="noopener">View Schedule</a>
+                            <div><h3>Rundown kegiatan</h3><p>Atur agenda lintas hari. Waktu menggunakan WIB (Jakarta). Setelah perubahan, ekspor JSON dan ganti file rundown di GitHub Pages.</p></div>
+                            <div class="d-flex gap-2">
+                                <a class="btn btn-outline-primary" href="/event/@selectedEvent.EventId/schedule" target="_blank" rel="noopener">View Schedule</a>
+                                <a class="btn btn-outline-success" href="/api/oms/events/@selectedEvent.EventId/schedule/export.json">Export JSON</a>
+                            </div>
                         </div>
                         <form id="schedule-item-form" class="mb-4">
                             <input id="schedule-session-id" type="hidden">

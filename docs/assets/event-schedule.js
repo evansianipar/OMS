@@ -202,8 +202,12 @@
             serverTime = apiTime.getTime();
             serverPerfTime = performance.now();
         }
+        const exportedAt = dateValue(data.exportedAtWib);
         errorBanner.hidden = true;
         updateTimeline();
+        updatedAt.textContent = exportedAt
+            ? `Data terakhir diekspor ${dateFormatter.format(exportedAt)} ${clockFormatter.format(exportedAt)} WIB`
+            : 'Rundown statis dari file JSON GitHub Pages';
     }
 
     function updateTimeline() {
@@ -298,23 +302,26 @@
             document.getElementById('now-activity').textContent = 'Rundown tidak ditemukan';
             return;
         }
-        if (!apiBase) {
-            showError('Alamat API OMS belum diatur pada file config.js.');
+        if (!/^[A-Za-z0-9_-]+$/.test(eventId)) {
+            showError('ID kegiatan pada tautan tidak valid.');
             return;
         }
         try {
-            const response = await fetch(`${apiBase}/api/public/events/${encodeURIComponent(eventId)}/schedule`, {
-                cache: 'no-store',
+            const scheduleUrl = new URL(
+                `./data/rundown/rundown-${encodeURIComponent(eventId)}.json`,
+                window.location.href);
+            const response = await fetch(scheduleUrl, {
+                cache: 'no-cache',
                 headers: { Accept: 'application/json' }
             });
-            if (response.status === 404) throw new Error('Kegiatan tidak ditemukan.');
-            if (!response.ok) throw new Error(`Jadwal tidak dapat dimuat (HTTP ${response.status}).`);
+            if (response.status === 404)
+                throw new Error('File JSON rundown belum tersedia di GitHub Pages. Ekspor ulang dari OMS dan ganti file rundown untuk kegiatan ini.');
+            if (!response.ok) throw new Error(`File rundown tidak dapat dimuat (HTTP ${response.status}).`);
             const data = await response.json();
             renderSchedule(data);
-            updatedAt.textContent = `Sinkronisasi terakhir ${clockFormatter.format(new Date(currentTime()))} WIB`;
         } catch (error) {
             showError(`${error.message} Jika masalah berlanjut, hubungi panitia.`);
-            updatedAt.textContent = 'Jadwal belum tersinkron';
+            updatedAt.textContent = 'File JSON rundown belum dimuat';
         }
     }
 
@@ -322,5 +329,4 @@
     loadParticipantQr();
     refreshSchedule();
     window.setInterval(updateTimeline, 1000);
-    window.setInterval(refreshSchedule, 30000);
 })();

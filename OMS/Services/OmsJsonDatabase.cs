@@ -44,23 +44,36 @@ public sealed class OmsJsonDatabase
         _blobStorage = blobStorage;
         _logger = logger;
         _authOptions = authOptions.Value;
-        _localPath = configuration["OmsDatabase:LocalPath"] is { Length: > 0 } configuredPath
-            ? Path.GetFullPath(configuredPath, environment.ContentRootPath)
+        var configuredLocalPath = configuration["OmsDatabase:LocalPath"];
+        _localPath = configuredLocalPath is { Length: > 0 }
+            ? Path.GetFullPath(configuredLocalPath, environment.ContentRootPath)
             : Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OMS",
                 "oms-database.json");
 
-        if (string.Equals(
-                configuration["ASPNETCORE_ENVIRONMENT"],
-                Environments.Production,
-                StringComparison.OrdinalIgnoreCase) &&
-            !_blobStorage.IsConfigured)
-            throw new InvalidOperationException(
-                "BLOB_READ_WRITE_TOKEN wajib diatur pada Vercel. Database lokal tidak persisten untuk deployment.");
+        if (environment.IsProduction() && !_blobStorage.IsConfigured)
+        {
+            if (!configuration.GetValue<bool>("OmsDatabase:AllowLocalInProduction"))
+                throw new InvalidOperationException(
+                    "Database lokal di Production dinonaktifkan. Untuk IIS, atur OmsDatabase:AllowLocalInProduction=true.");
+            if (string.IsNullOrWhiteSpace(configuredLocalPath) || !Path.IsPathRooted(configuredLocalPath))
+                throw new InvalidOperationException(
+                    "Pada Production dengan database lokal, OmsDatabase:LocalPath harus berupa path absolut.");
+
+            var relativePath = Path.GetRelativePath(
+                Path.GetFullPath(environment.ContentRootPath),
+                _localPath);
+            if (relativePath == "." ||
+                (!Path.IsPathRooted(relativePath) &&
+                 relativePath != ".." &&
+                 !relativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
+                throw new InvalidOperationException(
+                    "Pada Production, file database lokal harus berada di luar folder aplikasi yang di-deploy.");
+        }
         if (!_blobStorage.IsConfigured &&
-            !string.IsNullOrWhiteSpace(configuration["OmsDatabase:LocalPath"]) &&
-            Path.GetExtension(configuration["OmsDatabase:LocalPath"]) is not (".json" or ".JSON"))
+            !string.IsNullOrWhiteSpace(configuredLocalPath) &&
+            Path.GetExtension(configuredLocalPath) is not (".json" or ".JSON"))
             throw new InvalidOperationException("Path database OMS harus menunjuk ke file .json.");
     }
 

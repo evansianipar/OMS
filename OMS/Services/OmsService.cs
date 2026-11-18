@@ -297,7 +297,7 @@ public sealed class OmsService(
                 qrSourceIndex = qrHashIndex;
             }
 
-            var participantsRows = await sheets.ReadAsync("'Participants'!A1:R", cancellationToken);
+            var participantsRows = await sheets.ReadAsync("'Participants'!A1:S", cancellationToken);
             if (participantsRows.Count == 0)
                 throw new InvalidOperationException("Struktur peserta tidak ditemukan pada database JSON.");
             var participantHeaders = participantsRows[0]
@@ -305,8 +305,9 @@ public sealed class OmsService(
             var participantEventIndex = FindHeader(participantHeaders, "EVENTID");
             var participantEmployeeIndex = FindHeader(participantHeaders, "EMPLOYEENUMBER");
             var participantQrHashIndex = FindHeader(participantHeaders, "QRTOKENHASH");
+            var participantQrSourceIndex = FindHeader(participantHeaders, "QRTOKENSOURCE");
             if (participantEventIndex < 0 || participantEmployeeIndex < 0 ||
-                (qrSourceIndex >= 0 && participantQrHashIndex < 0))
+                (qrSourceIndex >= 0 && (participantQrHashIndex < 0 || participantQrSourceIndex < 0)))
                 throw new InvalidOperationException("Struktur kolom peserta pada database JSON tidak sesuai.");
 
             var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -380,6 +381,11 @@ public sealed class OmsService(
                             Range = $"'Participants'!{ColumnName(participantQrHashIndex)}{existingParticipant.RowNumber}:{ColumnName(participantQrHashIndex)}{existingParticipant.RowNumber}",
                             Values = new List<IList<object>> { new List<object> { qrTokenHash } }
                         });
+                        participantUpdates.Add(new JsonValueRange
+                        {
+                            Range = $"'Participants'!{ColumnName(participantQrSourceIndex)}{existingParticipant.RowNumber}:{ColumnName(participantQrSourceIndex)}{existingParticipant.RowNumber}",
+                            Values = new List<IList<object>> { new List<object> { "IMPORTED" } }
+                        });
                         qrCodesImported++;
                     }
                     continue;
@@ -398,13 +404,14 @@ public sealed class OmsService(
                     Cell(row, campIndex).Trim(),
                     Cell(row, transportIndex).Trim(),
                     Cell(row, vehicleIndex).Trim(),
-                    Cell(row, groupNumberIndex).Trim()
+                    Cell(row, groupNumberIndex).Trim(),
+                    qrTokenHash is not null ? "IMPORTED" : "GENERATED"
                 });
                 if (qrTokenHash is not null) qrCodesImported++;
             }
 
             if (additions.Count > 0)
-                await sheets.AppendRowsAsync("'Participants'!A:R", additions, cancellationToken);
+                await sheets.AppendRowsAsync("'Participants'!A:S", additions, cancellationToken);
             if (groupNumberIndex >= 0)
             {
                 var participantGroupIndex = FindHeader(participantHeaders, "GROUPNUMBER");
@@ -479,7 +486,8 @@ public sealed class OmsService(
                 item.Camp,
                 item.Transport,
                 item.Vehicle,
-                item.IsActive))
+                item.IsActive,
+                QrCodeStatus(item)))
             .ToList();
         return new ParticipantPage(results.Count, page, pageSize, items);
     }
@@ -522,7 +530,7 @@ public sealed class OmsService(
         await AttendanceLock.WaitAsync(cancellationToken);
         try
         {
-            var rows = await sheets.ReadAsync("'Participants'!A1:K", cancellationToken);
+            var rows = await sheets.ReadAsync("'Participants'!A1:S", cancellationToken);
             if (rows.Count < 2) throw new InvalidOperationException("Peserta tidak ditemukan.");
             var headers = rows[0].Select(value => Convert.ToString(value)?.Trim() ?? string.Empty).ToList();
             var idColumn = headers.IndexOf("ParticipantId");
@@ -530,9 +538,10 @@ public sealed class OmsService(
             var activeColumn = headers.IndexOf("IsActive");
             var hashColumn = headers.IndexOf("QrTokenHash");
             var updatedColumn = headers.IndexOf("UpdatedAt");
+            var qrSourceColumn = headers.IndexOf("QrTokenSource");
             var employeeColumn = headers.IndexOf("EmployeeNumber");
             var nameColumn = headers.IndexOf("FullName");
-            if (new[] { idColumn, eventColumn, activeColumn, hashColumn, updatedColumn }.Any(index => index < 0))
+            if (new[] { idColumn, eventColumn, activeColumn, hashColumn, updatedColumn, qrSourceColumn }.Any(index => index < 0))
                 throw new InvalidOperationException("Struktur peserta pada database JSON tidak sesuai dengan konfigurasi OMS.");
 
             for (var index = 1; index < rows.Count; index++)
@@ -555,6 +564,11 @@ public sealed class OmsService(
                     {
                         Range = $"'Participants'!K{sheetRow}:K{sheetRow}",
                         Values = new List<IList<object>> { new List<object> { now } }
+                    },
+                    new JsonValueRange
+                    {
+                        Range = $"'Participants'!{ColumnName(qrSourceColumn)}{sheetRow}:{ColumnName(qrSourceColumn)}{sheetRow}",
+                        Values = new List<IList<object>> { new List<object> { "GENERATED" } }
                     }
                 ], cancellationToken);
                 await AuditAsync(eventId, actorEmail, "REGENERATE_QR", "Participant", participantId,
@@ -1246,7 +1260,8 @@ public sealed class OmsService(
                 Get(row, "Camp"),
                 Get(row, "Transport"),
                 Get(row, "Vehicle"),
-                Get(row, "GroupNumber")))
+                Get(row, "GroupNumber"),
+                Get(row, "QrTokenSource")))
             .ToList();
     }
 
@@ -1286,6 +1301,17 @@ public sealed class OmsService(
 
     private static string NewQrToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+    private static string QrCodeStatus(OmsParticipant participant)
+    {
+        if (string.IsNullOrWhiteSpace(participant.TokenHash)) return "Belum ada QR";
+        return participant.QrTokenSource switch
+        {
+            "IMPORTED" => "QR lama (diimpor)",
+            "GENERATED" => "QR terbit dari OMS",
+            _ => "QR tersimpan (sumber tidak diketahui)"
+        };
+    }
 
     private static string RequiredText(string? value, int maxLength, string error)
     {

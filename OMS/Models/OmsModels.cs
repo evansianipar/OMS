@@ -29,7 +29,8 @@ public sealed record OmsParticipant(
     [property: JsonIgnore] string Camp = "",
     [property: JsonIgnore] string Transport = "",
     [property: JsonIgnore] string Vehicle = "",
-    [property: JsonIgnore] string GroupNumber = "");
+    [property: JsonIgnore] string GroupNumber = "",
+    [property: JsonIgnore] string QrTokenSource = "");
 
 public sealed record HomeViewModel(
     IReadOnlyList<OmsEvent> Events,
@@ -68,7 +69,8 @@ public sealed record ParticipantListItem(
     string Camp,
     string Transport,
     string Vehicle,
-    bool IsActive);
+    bool IsActive,
+    string QrCodeStatus);
 
 public sealed record ParticipantRequest(
     string EmployeeNumber,

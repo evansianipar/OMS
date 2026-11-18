@@ -20,7 +20,7 @@ public sealed class OmsJsonDatabase
         {
             ["Users"] = ["UserId", "Email", "FullName", "Role", "IsActive", "CreatedAt", "UpdatedAt", "PasswordHash", "PasswordSalt"],
             ["Events"] = ["EventId", "EventCode", "EventName", "Description", "StartDate", "EndDate", "Location", "Status", "CreatedAt", "CreatedBy", "UpdatedAt"],
-            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt", "EmployeeType", "PositionName", "Gender", "Camp", "Transport", "Vehicle", "GroupNumber"],
+            ["Participants"] = ["ParticipantId", "EventId", "EmployeeNumber", "FullName", "Department", "PhoneNumber", "Email", "QrTokenHash", "IsActive", "CreatedAt", "UpdatedAt", "EmployeeType", "PositionName", "Gender", "Camp", "Transport", "Vehicle", "GroupNumber", "QrTokenSource"],
             ["Sessions"] = ["SessionId", "EventId", "SessionName", "Description", "StartTime", "EndTime", "Location", "SessionType", "Status", "CreatedAt"],
             ["Attendance"] = ["AttendanceId", "EventId", "ParticipantId", "SessionId", "AttendanceTime", "CheckInMethod", "CheckedBy", "Notes", "CreatedAt", "CheckOutTime", "CheckOutMethod", "CheckedOutBy"],
             ["AuditLog"] = ["AuditId", "EventId", "ActorEmail", "Action", "EntityType", "EntityId", "Timestamp", "Details"],
@@ -451,7 +451,10 @@ public sealed class OmsJsonDatabase
             SetRowValue(table, row, "Transport", request.Transport?.Trim() ?? string.Empty);
             SetRowValue(table, row, "Vehicle", request.Vehicle?.Trim() ?? string.Empty);
             if (qrTokenHash is not null)
+            {
                 SetRowValue(table, row, "QrTokenHash", qrTokenHash);
+                SetRowValue(table, row, "QrTokenSource", "IMPORTED");
+            }
             if (request.GroupNumber is not null)
                 SetRowValue(table, row, "GroupNumber", request.GroupNumber.Trim());
             return savedParticipantId;

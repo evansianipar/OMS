@@ -677,6 +677,8 @@ public sealed class OmsService(
         offset = Math.Clamp(offset, 0, candidates.Count);
         batchSize = Math.Clamp(batchSize, 1, 20);
         var batch = candidates.Skip(offset).Take(batchSize).ToList();
+        if (batch.Count > 0)
+            invitations.ValidateConfiguration();
         var invitationInfoByEmployee = batch.Count == 0
             ? new Dictionary<string, EmployeeInvitationInfo>(StringComparer.OrdinalIgnoreCase)
             : await GetEmployeeInvitationInfoAsync(cancellationToken);
@@ -728,6 +730,7 @@ public sealed class OmsService(
         if (!System.Net.Mail.MailAddress.TryCreate(participant.Email.Trim(), out _))
             throw new InvalidOperationException("Alamat email peserta kosong atau tidak valid");
 
+        invitations.ValidateConfiguration();
         var invitationInfoByEmployee = await GetEmployeeInvitationInfoAsync(cancellationToken);
         await SendInvitationToParticipantAsync(
             eventId, participant, actorEmail, invitationInfoByEmployee, scheduleUrl, cancellationToken);

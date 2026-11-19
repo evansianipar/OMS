@@ -27,11 +27,7 @@ public sealed class GmailSmtpInvitationService(
         string scheduleUrl,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.Username) || string.IsNullOrWhiteSpace(_options.Password))
-            throw new InvalidOperationException(
-                "Konfigurasi email belum lengkap. Atur Email__Username dan Email__Password di environment server.");
-        if (_options.Port is < 1 or > 65535)
-            throw new InvalidOperationException("Konfigurasi SMTP port tidak valid.");
+        ValidateConfiguration();
 
         using var qrGenerator = new QRCodeGenerator();
         using var qrCodeData = qrGenerator.CreateQrCode(token, QRCodeGenerator.ECCLevel.Q);
@@ -80,6 +76,20 @@ public sealed class GmailSmtpInvitationService(
         };
         cancellationToken.ThrowIfCancellationRequested();
         await client.SendMailAsync(message, cancellationToken);
+    }
+
+    public void ValidateConfiguration()
+    {
+        if (string.IsNullOrWhiteSpace(_options.Username))
+            throw new InvalidOperationException(
+                "Konfigurasi email belum lengkap. Atur Email__Username pada environment server.");
+        if (string.IsNullOrWhiteSpace(_options.Password))
+            throw new InvalidOperationException(
+                "Password SMTP belum dikonfigurasi. Atur Email__Password dengan App Password Gmail (bukan password login akun) pada environment server.");
+        if (string.IsNullOrWhiteSpace(_options.Host))
+            throw new InvalidOperationException("Email:Host wajib diisi.");
+        if (_options.Port is < 1 or > 65535)
+            throw new InvalidOperationException("Konfigurasi SMTP port tidak valid.");
     }
 
     private static string BuildPlainText(

@@ -249,7 +249,7 @@
         } else {
             label.textContent = 'JADWAL SAAT INI';
             activity.textContent = 'Rundown belum tersedia';
-            detail.textContent = 'Panitia akan memperbarui jadwal kegiatan ini.';
+            detail.textContent = 'Panitia akan memperbarui jadwal kegiatan ini';
             liveBadge.textContent = 'LIVE WIB';
         }
     }
@@ -281,7 +281,7 @@
 
     async function refreshSchedule() {
         if (!eventId) {
-            showError('ID kegiatan tidak ditemukan pada tautan. Buka rundown dari tautan pada email undangan.');
+            showError('ID kegiatan tidak ditemukan pada tautan. Buka rundown dari tautan pada email undangan');
             document.getElementById('now-activity').textContent = 'Rundown tidak ditemukan';
             return;
         }

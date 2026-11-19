@@ -232,7 +232,7 @@
             label.textContent = 'SEDANG BERLANGSUNG';
             activity.textContent = current.element.querySelector('h3')?.textContent ?? 'Agenda kegiatan';
             detail.textContent = `Berlangsung hingga ${timeFormatter.format(new Date(current.end))} WIB`;
-            icon.textContent = '✦';
+            icon.textContent = '◷';
             liveBadge.textContent = 'SEDANG BERLANGSUNG';
         } else if (next) {
             label.textContent = 'AGENDA SELANJUTNYA';

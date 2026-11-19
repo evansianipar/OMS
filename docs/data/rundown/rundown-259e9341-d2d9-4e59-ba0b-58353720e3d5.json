@@ -13,7 +13,7 @@
     {
       "sessionId": "a52a8d2d02bc4b8fbbdf7c3a95ca7926",
       "sessionName": "Kehadiran Peserta",
-      "description": "",
+      "description": "Telah mengenakan dresscode yang sudah diinformasikan by email",
       "startTime": "2026-11-21T06:00:00+07:00",
       "endTime": "2026-11-21T06:30:00+07:00",
       "location": ""
@@ -36,7 +36,7 @@
     },
     {
       "sessionId": "fb47d76599ac477f98eaa5aa72a70706",
-      "sessionName": "Break 1 - (Istirahat - Sholat - Makan - Siang)",
+      "sessionName": "Break 1 - (Istirahat - Sholat - Makan Siang)",
       "description": "",
       "startTime": "2026-11-21T11:30:00+07:00",
       "endTime": "2026-11-21T13:00:00+07:00",
@@ -48,7 +48,7 @@
       "description": "Oleh: Bp. Felix, Bp. Willy, dan Bp. Ade",
       "startTime": "2026-11-21T13:00:00+07:00",
       "endTime": "2026-11-21T13:30:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "e19999eeef234bd1a27761d3dbab5e0c",
@@ -56,7 +56,7 @@
       "description": "",
       "startTime": "2026-11-21T13:30:00+07:00",
       "endTime": "2026-11-21T13:40:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "9aa6cc16ef5247d89b00b7f061873945",
@@ -64,7 +64,7 @@
       "description": "Oleh: Bp. Felix",
       "startTime": "2026-11-21T13:40:00+07:00",
       "endTime": "2026-11-21T14:15:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "8cab4890fb04437ea2eabfa1aa5a4438",
@@ -155,5 +155,5 @@
       "location": ""
     }
   ],
-  "exportedAtWib": "2026-11-18T23:11:10.1351151+07:00"
+  "exportedAtWib": "2026-11-19T11:41:04.8560064+07:00"
 }

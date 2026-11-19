@@ -2,7 +2,7 @@
   "event": {
     "eventId": "65a5932b-280b-4688-9adb-23267211e5d4",
     "eventCode": "EV001",
-    "eventName": "IT DIVISION ROAR30 - 2026",
+    "eventName": "IT DIVISION - WOM ROAR30 - 2026",
     "description": "Kegiatan Outing IT Division ROAR30 2026",
     "startDate": "2026-11-21",
     "endDate": "2026-11-22",
@@ -13,8 +13,8 @@
     {
       "sessionId": "a52a8d2d02bc4b8fbbdf7c3a95ca7926",
       "sessionName": "Kehadiran Peserta",
-      "description": "",
-      "startTime": "2026-11-21T06:00:00+07:00",
+      "description": "Telah mengenakan dresscode yang sudah diinformasikan by email",
+      "startTime": "2026-11-19T11:45:00+07:00",
       "endTime": "2026-11-21T06:30:00+07:00",
       "location": ""
     },
@@ -36,7 +36,7 @@
     },
     {
       "sessionId": "fb47d76599ac477f98eaa5aa72a70706",
-      "sessionName": "Break 1 - (Istirahat - Sholat - Makan - Siang)",
+      "sessionName": "Break 1 - (Istirahat - Sholat - Makan Siang)",
       "description": "",
       "startTime": "2026-11-21T11:30:00+07:00",
       "endTime": "2026-11-21T13:00:00+07:00",
@@ -48,7 +48,7 @@
       "description": "Oleh: Bp. Felix, Bp. Willy, dan Bp. Ade",
       "startTime": "2026-11-21T13:00:00+07:00",
       "endTime": "2026-11-21T13:30:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "e19999eeef234bd1a27761d3dbab5e0c",
@@ -56,7 +56,7 @@
       "description": "",
       "startTime": "2026-11-21T13:30:00+07:00",
       "endTime": "2026-11-21T13:40:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "9aa6cc16ef5247d89b00b7f061873945",
@@ -64,7 +64,7 @@
       "description": "Oleh: Bp. Felix",
       "startTime": "2026-11-21T13:40:00+07:00",
       "endTime": "2026-11-21T14:15:00+07:00",
-      "location": ""
+      "location": "Ballroom"
     },
     {
       "sessionId": "8cab4890fb04437ea2eabfa1aa5a4438",
@@ -77,7 +77,7 @@
     {
       "sessionId": "dd2355b584874245b3a220d6a44ff118",
       "sessionName": "Break 2 - (Istirahat - Sholat)",
-      "description": "Peserta mengambil Tas & Check-in room",
+      "description": "Peserta mengambil Tas \u0026 Check-in room",
       "startTime": "2026-11-21T17:15:00+07:00",
       "endTime": "2026-11-21T18:25:00+07:00",
       "location": ""
@@ -92,7 +92,7 @@
     },
     {
       "sessionId": "772abe86d99841e18fe69b460f35f284",
-      "sessionName": "Gala Dinner & Perfomance",
+      "sessionName": "Gala Dinner \u0026 Perfomance",
       "description": "",
       "startTime": "2026-11-21T19:00:00+07:00",
       "endTime": "2026-11-21T22:00:00+07:00",
@@ -100,7 +100,7 @@
     },
     {
       "sessionId": "1f6d5276a9b24d729ad1947fd9bd654a",
-      "sessionName": "Api Unggun & Tukar Kado",
+      "sessionName": "Api Unggun \u0026 Tukar Kado",
       "description": "",
       "startTime": "2026-11-21T22:00:00+07:00",
       "endTime": "2026-11-21T22:45:00+07:00",
@@ -148,12 +148,12 @@
     },
     {
       "sessionId": "b3ed3daa22534840b83b9652de4615ae",
-      "sessionName": "Check Out & Perjalanan Pulang",
+      "sessionName": "Check Out \u0026 Perjalanan Pulang",
       "description": "",
       "startTime": "2026-11-22T11:30:00+07:00",
       "endTime": "2026-11-22T12:00:00+07:00",
       "location": ""
     }
   ],
-  "exportedAtWib": "2026-11-18T23:11:10.1351151+07:00"
+  "exportedAtWib": "2026-11-19T11:41:04.8560064+07:00"
 }

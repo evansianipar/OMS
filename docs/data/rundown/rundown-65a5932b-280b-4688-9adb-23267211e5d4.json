@@ -2,7 +2,7 @@
   "event": {
     "eventId": "65a5932b-280b-4688-9adb-23267211e5d4",
     "eventCode": "EV001",
-    "eventName": "IT DIVISION - WOM ROAR30 - 2026",
+    "eventName": "IT DIVISION ROAR30 - 2026",
     "description": "Kegiatan Outing IT Division ROAR30 2026",
     "startDate": "2026-11-21",
     "endDate": "2026-11-22",
@@ -14,7 +14,7 @@
       "sessionId": "a52a8d2d02bc4b8fbbdf7c3a95ca7926",
       "sessionName": "Kehadiran Peserta",
       "description": "Telah mengenakan dresscode yang sudah diinformasikan by email",
-      "startTime": "2026-11-19T11:45:00+07:00",
+      "startTime": "2026-11-21T06:00:00+07:00",
       "endTime": "2026-11-21T06:30:00+07:00",
       "location": ""
     },

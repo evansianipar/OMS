@@ -205,8 +205,8 @@
         errorBanner.hidden = true;
         updateTimeline();
         updatedAt.textContent = exportedAt
-            ? `Data terakhir diekspor ${dateFormatter.format(exportedAt)} ${clockFormatter.format(exportedAt)} WIB`
-            : 'Rundown statis dari file JSON GitHub Pages';
+            ? `${dateFormatter.format(exportedAt)} ${clockFormatter.format(exportedAt)} WIB`
+            : '-';
     }
 
     function updateTimeline() {

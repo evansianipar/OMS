@@ -358,6 +358,10 @@ public sealed class OmsApiController(
     private string ScheduleUrl(string eventId)
     {
         var configuredBaseUrl = configuration["OmsPublic:BaseUrl"];
+        var rundownEventId = configuration["OmsPublic:RundownEventId"];
+        if (!string.IsNullOrWhiteSpace(rundownEventId) && !Guid.TryParse(rundownEventId, out _))
+            throw new InvalidOperationException("OmsPublic:RundownEventId harus berupa GUID yang valid.");
+
         Uri baseUri;
         if (!string.IsNullOrWhiteSpace(configuredBaseUrl))
         {
@@ -383,7 +387,7 @@ public sealed class OmsApiController(
         var pageUrl = new Uri(baseAddress, ".");
         return new UriBuilder(pageUrl)
         {
-            Query = $"eventId={Uri.EscapeDataString(eventId)}"
+            Query = $"eventId={Uri.EscapeDataString(string.IsNullOrWhiteSpace(rundownEventId) ? eventId : rundownEventId)}"
         }.Uri.ToString();
     }
 }
